@@ -6,17 +6,17 @@
 extern "C"{
 #endif
 
-#include "stm32f4xx.h"
-#include "ff.h"
+#include "stm32h7xx.h"
+#include "./FATFS/ff.h"
   
 //文件系统通用接口，SD卡及flash的根目录
 #define SD_ROOT       "0:"
 #define FLASH_ROOT    "1:"
 
 /* 资源在SD卡中的路径(盘符路径，根据程序挂载设备的节点决定) */
-#define RESOURCE_DIR         "0:/srcdata"
+#define RESOURCE_DIR         "0:/"
 /* 资源烧录到的FLASH基地址（目录地址） */
-#define RESOURCE_BASE_ADDR    (8*1024*1024)
+#define RESOURCE_BASE_ADDR    (4096)
 /* 存储在FLASH中的资源目录大小 */
 #define CATALOG_SIZE           (8*1024)
   

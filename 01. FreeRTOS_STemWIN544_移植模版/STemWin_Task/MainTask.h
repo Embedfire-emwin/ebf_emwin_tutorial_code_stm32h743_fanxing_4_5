@@ -2,7 +2,7 @@
 #define __MAINTASK_H
 
 #include "GUI.h"
-#include "DIALOG.h"
+#include "TEXT.h"
 
 void MainTask(void);
 

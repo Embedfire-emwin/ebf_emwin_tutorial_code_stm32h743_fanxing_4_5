@@ -5,11 +5,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "./res_mgr/RES_MGR.h"
-#include "ff.h"
+#include "./res_mgr.h"
+#include "./FATFS/ff.h"
 
-#include "./led/bsp_led.h"
+//#include ".///LED/bsp_//LED.h"
 #include "./flash/bsp_spi_flash.h"
+
+//#define SPI_FLASH_BufferRead BSP_QSPI_FastRead
+//#define SPI_FLASH_BufferWrite BSP_QSPI_Write
 
 /*============================================================================*/
 
@@ -23,6 +26,9 @@ char src_dir[512]= RESOURCE_DIR;
 static FIL file_temp;													/* file objects */
 static char full_file_name[512];
 static char line_temp[512];
+static uint8_t state = 0;
+uint32_t loop = 0;
+
 
 
 /**
@@ -122,6 +128,7 @@ FRESULT Make_Catalog (char* path,uint8_t clear)
    
   /* 记录地址偏移信息 */
   static uint32_t resource_addr = CATALOG_SIZE ;
+  uint32_t addr_temp = 0;
     
 #if _USE_LFN 
   /* 长文件名支持 */
@@ -335,6 +342,7 @@ void Burn_Catalog(void)
     /* 已遍历完毕,跳出循环 */
     if(is_end !=0)   
       break;
+    loop = 0;
     
     if(sizeof(dir) == 0)break;//为0时不进行读写，跳出  
     /* 把dir信息烧录到FLASH中 */  
@@ -372,26 +380,28 @@ FRESULT Burn_Content(void)
   
     BURN_INFO("-------------------------------------"); 
     BURN_INFO("准备烧录内容：%s",full_file_name);
-    LED1_ON;
+    //LED1_ON;
      
      result = f_open(&file_temp,full_file_name,FA_OPEN_EXISTING | FA_READ);
       if(result != FR_OK)
       {
           BURN_ERROR("打开文件失败！");
-          LED3_ON;
+          //LED3_ON;
           return result;
       }
   
       BURN_INFO("正在向FLASH写入内容...");
       
       write_addr = dir.offset + RESOURCE_BASE_ADDR;
+      loop = 0;
       while(result == FR_OK) 
       {
+        loop++;
         result = f_read( &file_temp, tempbuf, 256, &bw);//读取数据	 
         if(result!=FR_OK)			 //执行错误
         {
           BURN_ERROR("读取文件失败！result = %d",result);
-          LED3_ON;
+          //LED3_ON;
           return result;
         }    
         if(bw == 0)break;//为0时不进行读写，跳出  
@@ -449,7 +459,7 @@ FRESULT Check_Resource(void)
     offset = GetResOffset(dir.name);
     if(offset == -1)
     {
-      LED3_ON;
+      //LED3_ON;
       BURN_INFO("校验失败，无法在FLASH中找到文件：%s 的目录",dir.name);
       return FR_NO_FILE;
     }
@@ -466,7 +476,7 @@ FRESULT Check_Resource(void)
       if(result != FR_OK)
       {
           BURN_ERROR("打开文件失败！");
-              LED3_ON;
+              //LED3_ON;
           return result;
       }
           
@@ -474,13 +484,15 @@ FRESULT Check_Resource(void)
       read_addr = dir.offset;
      
       f_lseek(&file_temp,0);
+      loop = 0;
       while(result == FR_OK) 
       {
+        loop++;
         result = f_read( &file_temp, tempbuf, 256, &bw);//读取数据	 
         if(result!=FR_OK)			 //执行错误
         {
           BURN_ERROR("读取文件失败！");
-          LED3_ON;
+          //LED3_ON;
           return result;
         }    
 
@@ -506,7 +518,7 @@ FRESULT Check_Resource(void)
             BURN_DEBUG_ARRAY(tempbuf,bw);
             BURN_ERROR("flash_buf");
             BURN_DEBUG_ARRAY(flash_buf,bw);
-            LED3_ON;
+            //LED3_ON;
             return FR_INT_ERR;
           }
          }  
@@ -515,12 +527,12 @@ FRESULT Check_Resource(void)
       }      
 
       BURN_INFO("数据校验正常！");
-      LED_ALLTOGGLE;
+      //LED_ALLTOGGLE;
                
       f_close(&file_temp);     
   }
   
-  LED_ALLTOGGLE;
+  //LED_ALLTOGGLE;
   BURN_INFO("************************************");
   BURN_INFO("所有文件校验正常！（非文件系统部分）");
   return FR_OK;

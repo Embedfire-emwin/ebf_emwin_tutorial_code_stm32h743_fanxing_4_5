@@ -1,27 +1,22 @@
-#ifndef __BSP_ADC_H
-#define	__BSP_ADC_H
+#ifndef __ADC_H
+#define	__ADC_H
 
-#include "stm32f4xx.h"
+#include "stm32h7xx.h"
 
-// ADC GPIO 宏定义
-#define RHEOSTAT_ADC_GPIO_PORT    GPIOB
-#define RHEOSTAT_ADC_GPIO_PIN     GPIO_Pin_0
-#define RHEOSTAT_ADC_GPIO_CLK     RCC_AHB1Periph_GPIOB
+
+//引脚定义
+#define RHEOSTAT_ADC_PIN                            GPIO_PIN_3                
+#define RHEOSTAT_ADC_GPIO_PORT                      GPIOF                
+#define RHEOSTAT_ADC_GPIO_CLK_ENABLE()              __GPIOF_CLK_ENABLE()
 
 // ADC 序号宏定义
-#define RHEOSTAT_ADC              ADC1
-#define RHEOSTAT_ADC_CLK          RCC_APB2Periph_ADC1
-#define RHEOSTAT_ADC_CHANNEL      ADC_Channel_8
+#define RHEOSTAT_ADC                        ADC3
+#define RHEOSTAT_ADC_CLK_ENABLE()           __ADC3_CLK_ENABLE()
+#define RHEOSTAT_ADC_CHANNEL                ADC_CHANNEL_5
 
+#define Rheostat_ADC_IRQ                    ADC3_IRQn
 
-// ADC 中断宏定义
-#define Rheostat_ADC_IRQ            ADC_IRQn
-#define Rheostat_ADC_INT_FUNCTION   ADC_IRQHandler
+void ADC_Init(void);
 
-
-void Rheostat_Init(void);
-
-#endif /* __BSP_ADC_H */
-
-
-
+uint16_t ADC_GetValue(void);
+#endif /* __ADC_H */

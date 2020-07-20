@@ -19,9 +19,11 @@
 #include <stdlib.h>
 
 #include "./flash/bsp_spi_flash.h"
+
 #include "./res_mgr/RES_MGR.h"
 
-
+//#define SPI_FLASH_BufferRead BSP_QSPI_FastRead
+//#define SPI_FLASH_BufferWrite BSP_QSPI_Write
 
 /*=========================================================================================*/
 

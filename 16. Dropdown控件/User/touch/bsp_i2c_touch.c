@@ -3,21 +3,21 @@
   * @file    bsp_i2c_ee.c
   * @author  STMicroelectronics
   * @version V1.0
-  * @date    2015-xx-xx
+  * @date    2016-xx-xx
   * @brief   电容触摸屏的专用iic驱动
   ******************************************************************************
   * @attention
   *
-  * 实验平台:野火  STM32 F407 开发板 
+  * 实验平台:野火  STM32 H743 开发板 
   * 论坛    :http://www.firebbs.cn
-  * 淘宝    :https://fire-stm32.taobao.com
+  * 淘宝    :http://firestm32.taobao.com
   *
   ******************************************************************************
   */ 
 
 #include "./touch/bsp_i2c_touch.h"
-#include "./touch/gt5xx.h"
-#include "./usart/bsp_debug_usart.h"
+#include "./touch/gt9xx.h"
+#include "./usart/bsp_usart.h"
 
 
 /* STM32 I2C 快速模式 */
@@ -26,53 +26,38 @@
 /* 这个地址只要与STM32外挂的I2C器件地址不一样即可 */
 #define I2C_OWN_ADDRESS7      0x0A
 
-
+I2C_HandleTypeDef  I2C_Handle; 
 
 static void Delay(__IO uint32_t nCount)	 //简单的延时函数
 {
 	for(; nCount != 0; nCount--);
 }
-
-
-/**
-  * @brief  使能触摸屏中断
+ /**
+  * @brief  配置 PB7 为线中断口，并设置中断优先级
   * @param  无
   * @retval 无
   */
 void I2C_GTP_IRQEnable(void)
 {
-  EXTI_InitTypeDef EXTI_InitStructure;  
-  NVIC_InitTypeDef NVIC_InitStructure;
-  GPIO_InitTypeDef GPIO_InitStructure;  
-  /*配置 INT 为浮空输入 */   
-  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
-  GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);  
-  
-  /* 连接 EXTI 中断源 到INT 引脚 */
-  SYSCFG_EXTILineConfig(GTP_INT_EXTI_PORTSOURCE, GTP_INT_EXTI_PINSOURCE);
+    GPIO_InitTypeDef GPIO_InitStructure; 
 
-  /* 选择 EXTI 中断源 */
-  EXTI_InitStructure.EXTI_Line = GTP_INT_EXTI_LINE;
-  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;  
-  EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-  EXTI_Init(&EXTI_InitStructure);  
-  
-  /* 配置中断优先级 */
-  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
-  
-	/*使能中断*/
-  NVIC_InitStructure.NVIC_IRQChannel = GTP_INT_EXTI_IRQ;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
+    /*开启按键GPIO口的时钟*/
+    GTP_INT_GPIO_CLK_ENABLE();
+
+    /* 选择中断引脚 */ 
+    GPIO_InitStructure.Pin = GTP_INT_GPIO_PIN;
+    /* 设置引脚为输入模式 */ 
+    GPIO_InitStructure.Mode = GPIO_MODE_IT_RISING;	    		
+    /* 设置引脚不上拉也不下拉 */
+    GPIO_InitStructure.Pull = GPIO_NOPULL;
+    /* 使用上面的结构体初始化按键 */
+    HAL_GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure); 
+    /* 配置中断优先级 */
+    HAL_NVIC_SetPriority(GTP_INT_EXTI_IRQ, 1, 1);
+    /* 使能中断 */
+    HAL_NVIC_EnableIRQ(GTP_INT_EXTI_IRQ);
 
 }
-
 /**
   * @brief  关闭触摸屏中断
   * @param  无
@@ -80,35 +65,23 @@ void I2C_GTP_IRQEnable(void)
   */
 void I2C_GTP_IRQDisable(void)
 {
-  EXTI_InitTypeDef EXTI_InitStructure;
-  NVIC_InitTypeDef NVIC_InitStructure;
-  GPIO_InitTypeDef GPIO_InitStructure;
-  /*配置 INT 为浮空输入 */   
-  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
-  GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
+    GPIO_InitTypeDef GPIO_InitStructure; 
 
-  /* 连接 EXTI 中断源 到INT 引脚 */
-  SYSCFG_EXTILineConfig(GTP_INT_EXTI_PORTSOURCE, GTP_INT_EXTI_PINSOURCE);
+    /*开启按键GPIO口的时钟*/
+    GTP_INT_GPIO_CLK_ENABLE();
 
-  /* 选择 EXTI 中断源 */
-  EXTI_InitStructure.EXTI_Line = GTP_INT_EXTI_LINE;
-  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
-  EXTI_InitStructure.EXTI_LineCmd = DISABLE;
-  EXTI_Init(&EXTI_InitStructure);
-
-  /* 配置中断优先级 */
-  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
-
-  /* 关闭中断 */
-  NVIC_InitStructure.NVIC_IRQChannel = GTP_INT_EXTI_IRQ;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = DISABLE;
-  NVIC_Init(&NVIC_InitStructure);
+    /* 选择中断引脚 */ 
+    GPIO_InitStructure.Pin = GTP_INT_GPIO_PIN;
+    /* 设置引脚为输入模式 */ 
+    GPIO_InitStructure.Mode = GPIO_MODE_INPUT;	    		
+    /* 设置引脚不上拉也不下拉 */
+    GPIO_InitStructure.Pull = GPIO_NOPULL;
+    /* 使用上面的结构体初始化按键 */
+    HAL_GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure); 
+    /* 配置中断优先级 */
+    HAL_NVIC_SetPriority(GTP_INT_EXTI_IRQ, 1, 1);
+    /* 使能中断 */
+    HAL_NVIC_DisableIRQ(GTP_INT_EXTI_IRQ);
 
 }
 
@@ -120,44 +93,63 @@ void I2C_GTP_IRQDisable(void)
 static void I2C_GPIO_Config(void)
 {
   GPIO_InitTypeDef GPIO_InitStructure;  
+   
+  /*使能I2C时钟 */
+  GTP_I2C_CLK_ENABLE();
   
   /*使能触摸屏使用的引脚的时钟*/
-  RCC_AHB1PeriphClockCmd(GTP_I2C_SCL_GPIO_CLK|
-                       	 GTP_I2C_SDA_GPIO_CLK|
-	                       GTP_RST_GPIO_CLK|GTP_INT_GPIO_CLK, 
-	                       ENABLE);
+  GTP_I2C_SCL_GPIO_CLK_ENABLE();
+  GTP_I2C_SDA_GPIO_CLK_ENABLE();
+  GTP_RST_GPIO_CLK_ENABLE();
+  GTP_INT_GPIO_CLK_ENABLE();
 
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
+#if !(SOFT_IIC)   //使用硬件IIC 
     
+  /*配置SDA引脚 */  
+
+  GPIO_InitStructure.Pin = GTP_I2C_SCL_PIN;
+
+  GPIO_InitStructure.Mode = GPIO_MODE_AF_OD;
+
+  GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
+
+  GPIO_InitStructure.Pull  = GPIO_NOPULL;
+
+  GPIO_InitStructure.Alternate = GTP_I2C_SCL_AF;
+
+  HAL_GPIO_Init(GTP_I2C_SCL_GPIO_PORT, &GPIO_InitStructure);
+
+  /*配置SCL引脚 */
+  GPIO_InitStructure.Pin = GTP_I2C_SDA_PIN;
+  HAL_GPIO_Init(GTP_I2C_SDA_GPIO_PORT, &GPIO_InitStructure);
+
+#else  //使用软件IIC
     /*配置SCL引脚 */   
-    GPIO_InitStructure.GPIO_Pin = GTP_I2C_SCL_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
-    GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
-    GPIO_Init(GTP_I2C_SCL_GPIO_PORT, &GPIO_InitStructure);
+  GPIO_InitStructure.Pin = GTP_I2C_SCL_PIN;
+  GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStructure.Pull  = GPIO_NOPULL;
+  HAL_GPIO_Init(GTP_I2C_SCL_GPIO_PORT, &GPIO_InitStructure);
 
-    /*配置SDA引脚 */
-    GPIO_InitStructure.GPIO_Pin = GTP_I2C_SDA_PIN;
-    GPIO_Init(GTP_I2C_SDA_GPIO_PORT, &GPIO_InitStructure);
-
+  /*配置SDA引脚 */
+  GPIO_InitStructure.Pin = GTP_I2C_SDA_PIN;
+  HAL_GPIO_Init(GTP_I2C_SCL_GPIO_PORT, &GPIO_InitStructure);
+#endif
  
   /*配置RST引脚，下拉推挽输出 */   
-  GPIO_InitStructure.GPIO_Pin = GTP_RST_GPIO_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;
-  GPIO_Init(GTP_RST_GPIO_PORT, &GPIO_InitStructure);
+  GPIO_InitStructure.Pin = GTP_RST_GPIO_PIN;
+  GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStructure.Pull  = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GTP_RST_GPIO_PORT, &GPIO_InitStructure);
   
   /*配置 INT引脚，下拉推挽输出，方便初始化 */   
-  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStructure.Pin =  GTP_INT_GPIO_PIN;
+  GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
 	//设置为下拉，方便初始化
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;
-  GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
+  GPIO_InitStructure.Pull  = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
 }
 
 
@@ -168,33 +160,76 @@ static void I2C_GPIO_Config(void)
   */
 void I2C_ResetChip(void)
 {
-	  GPIO_InitTypeDef GPIO_InitStructure;
+	GPIO_InitTypeDef GPIO_InitStructure;
 
-  /*配置 INT引脚，下拉推挽输出，方便初始化 */   
-	  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
-	  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-	  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-	  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;       //设置为下拉，方便初始化
-	  GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
+	/*配置 INT引脚，下拉推挽输出，方便初始化 */   
+	GPIO_InitStructure.Pin = GTP_INT_GPIO_PIN;
+	GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
+	GPIO_InitStructure.Pull  = GPIO_PULLDOWN;       //设置为下拉，方便初始化
+	HAL_GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
+
+	/*初始化GT9157,rst为高电平，int为低电平，则gt9157的设备地址被配置为0xBA*/
+
+	/*复位为低电平，为初始化做准备*/
+	HAL_GPIO_WritePin (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN,GPIO_PIN_RESET);
+	Delay(0x0FFFFF);
+
+	/*拉高一段时间，进行初始化*/
+	HAL_GPIO_WritePin (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN,GPIO_PIN_SET);
+	Delay(0x0FFFFF);
 
 	  /*初始化GT9157,rst为高电平，int为低电平，则gt9157的设备地址被配置为0xBA*/
 
-	  /*复位为低电平，为初始化做准备*/
-	  GPIO_ResetBits (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN);
-	  Delay(0x0FFFFF);
+	/*复位为低电平，为初始化做准备*/
+	HAL_GPIO_WritePin (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN,GPIO_PIN_RESET);
+	Delay(0x0FFFFF);
 
-	  /*拉高一段时间，进行初始化*/
-	  GPIO_SetBits (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN);
-	  Delay(0x0FFFFF);
+	/*拉高一段时间，进行初始化*/
+	HAL_GPIO_WritePin (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN,GPIO_PIN_SET);
+	Delay(0x0FFFFF);
 
-	  /*把INT引脚设置为浮空输入模式，以便接收触摸中断信号*/
-	  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
-	  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
-	  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
-	  GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
+	/*把INT引脚设置为浮空输入模式，以便接收触摸中断信号*/
+	GPIO_InitStructure.Pin = GTP_INT_GPIO_PIN;
+	GPIO_InitStructure.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
+	GPIO_InitStructure.Pull  = GPIO_NOPULL;
+	HAL_GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
 }
+
+/**
+  * @brief  I2C 工作模式配置
+  * @param  无
+  * @retval 无
+  */
+static void I2C_Mode_Config(void)
+{
+    /* I2C 配置 */
+
+    I2C_Handle.Instance = GTP_I2C;
+
+    I2C_Handle.Init.Timing           = 0x90913232;//50KHz
+
+    I2C_Handle.Init.OwnAddress1      = 0;
+
+    I2C_Handle.Init.AddressingMode   = I2C_ADDRESSINGMODE_7BIT;
+
+    I2C_Handle.Init.DualAddressMode  = I2C_DUALADDRESS_DISABLE;
+
+    I2C_Handle.Init.OwnAddress2      = 0;
+
+    I2C_Handle.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+
+    I2C_Handle.Init.GeneralCallMode  = I2C_GENERALCALL_DISABLE;
+
+    I2C_Handle.Init.NoStretchMode    = I2C_NOSTRETCH_DISABLE;
+
+    /* Init the I2C */
+
+    HAL_I2C_Init(&I2C_Handle);	
+    HAL_I2CEx_AnalogFilter_Config(&I2C_Handle, I2C_ANALOGFILTER_ENABLE); 
+}
+
 
 /**
   * @brief  I2C 外设(GT91xx)初始化
@@ -205,10 +240,52 @@ void I2C_Touch_Init(void)
 {
   I2C_GPIO_Config(); 
  
+#if !(SOFT_IIC) //硬件IIC模式 
+    I2C_Mode_Config();
+#endif
+  
   I2C_ResetChip();
-
-  I2C_GTP_IRQEnable();
+//  I2C_GTP_IRQEnable();
 }
+
+
+#if !(SOFT_IIC)   //使用硬件IIC     
+
+
+__IO uint32_t  I2CTimeout = I2CT_LONG_TIMEOUT;   
+
+/**
+  * @brief   使用IIC读取数据
+  * @param   
+  * 	@arg ClientAddr:从设备地址
+  *		@arg pBuffer:存放由从机读取的数据的缓冲区指针
+  *		@arg NumByteToRead:读取的数据长度
+  * @retval  无
+  */
+uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRead)
+{
+  HAL_I2C_Master_Receive(&I2C_Handle,ClientAddr,pBuffer,NumByteToRead,1000);    
+  return 0;
+}
+
+
+/**
+  * @brief   使用IIC写入数据
+  * @param   
+  * 	@arg ClientAddr:从设备地址
+  *		@arg pBuffer:缓冲区指针
+  *     @arg NumByteToWrite:写的字节数
+  * @retval  无
+  */
+uint32_t I2C_WriteBytes(uint8_t ClientAddr,uint8_t* pBuffer,  uint8_t NumByteToWrite)
+{
+  HAL_I2C_Master_Transmit(&I2C_Handle,ClientAddr,pBuffer,NumByteToWrite,1000);
+  return 0;  
+
+}
+
+#else //使用软件IIC
+
 /*
 *********************************************************************************************************
 *	函 数 名: i2c_Delay
@@ -229,7 +306,7 @@ static void i2c_Delay(void)
 		循环次数为30时，SCL频率 = 533KHz，  
 	 	循环次数为20时，SCL频率 = 727KHz， 
   */
-	for (i = 0; i < 10*2; i++);
+	for (i = 0; i < 10*8; i++);
 }
 
 /*
@@ -431,13 +508,7 @@ uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRe
 
 	while(NumByteToRead) 
   {
-   if(NumByteToRead == 1)
-    {
-			i2c_NAck();	/* 最后1个字节读完后，CPU产生NACK信号(驱动SDA = 1) */
-      
-      /* 发送I2C总线停止信号 */
-      i2c_Stop();
-    }
+
     
    *pBuffer = i2c_ReadByte();
     
@@ -447,7 +518,10 @@ uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRe
     /*计数器自减 */
     NumByteToRead--;
     
-    i2c_Ack();	/* 中间字节读完后，CPU产生ACK信号(驱动SDA = 0) */  
+    if(NumByteToRead == 0)
+			i2c_NAck();	/* 最后1个字节读完后，CPU产生NACK信号(驱动SDA = 1) */
+    else
+      i2c_Ack();	/* 中间字节读完后，CPU产生ACK信号(驱动SDA = 0) */  
   }
 
 	/* 发送I2C总线停止信号 */
@@ -520,6 +594,8 @@ cmd_fail: /* 命令执行失败后，切记发送停止信号，避免影响I2C总线上其他设备 */
 	i2c_Stop();
 	return 1;
 }
+
+#endif
 
 
 /*********************************************END OF FILE**********************/

@@ -1,7 +1,7 @@
 #ifndef __SPI_FLASH_H
 #define __SPI_FLASH_H
 
-#include "stm32f4xx.h"
+#include "stm32h7xx.h"
 #include <stdio.h>
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,40 +38,42 @@
 #define Dummy_Byte                0xFF
 /*命令定义-结尾*******************************/
 
+ //SPI号及时钟初始化函数
+#define SPIx                             SPI1
+#define SPIx_CLK_ENABLE()                __HAL_RCC_SPI1_CLK_ENABLE()
+#define SPIx_SCK_GPIO_CLK_ENABLE()       __HAL_RCC_GPIOB_CLK_ENABLE()
+#define SPIx_MISO_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE() 
+#define SPIx_MOSI_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE() 
+#define SPIx_CS_GPIO_CLK_ENABLE()        __HAL_RCC_GPIOG_CLK_ENABLE() 
 
-/*SPI接口定义-开头****************************/
-#define FLASH_SPI                           SPI1
-#define FLASH_SPI_CLK                       RCC_APB2Periph_SPI1
-#define FLASH_SPI_CLK_INIT                  RCC_APB2PeriphClockCmd
+#define SPIx_FORCE_RESET()               __HAL_RCC_SPI1_FORCE_RESET()
+#define SPIx_RELEASE_RESET()             __HAL_RCC_SPI1_RELEASE_RESET()
 
-#define FLASH_SPI_SCK_PIN                   GPIO_Pin_3                  
-#define FLASH_SPI_SCK_GPIO_PORT             GPIOB                       
-#define FLASH_SPI_SCK_GPIO_CLK              RCC_AHB1Periph_GPIOB
-#define FLASH_SPI_SCK_PINSOURCE             GPIO_PinSource3
-#define FLASH_SPI_SCK_AF                    GPIO_AF_SPI1
-
-#define FLASH_SPI_MISO_PIN                  GPIO_Pin_4                
-#define FLASH_SPI_MISO_GPIO_PORT            GPIOB                   
-#define FLASH_SPI_MISO_GPIO_CLK             RCC_AHB1Periph_GPIOB
-#define FLASH_SPI_MISO_PINSOURCE            GPIO_PinSource4
-#define FLASH_SPI_MISO_AF                   GPIO_AF_SPI1
-
-#define FLASH_SPI_MOSI_PIN                  GPIO_Pin_5                
-#define FLASH_SPI_MOSI_GPIO_PORT            GPIOB                     
-#define FLASH_SPI_MOSI_GPIO_CLK             RCC_AHB1Periph_GPIOB
-#define FLASH_SPI_MOSI_PINSOURCE            GPIO_PinSource5
-#define FLASH_SPI_MOSI_AF                   GPIO_AF_SPI1
-
-#define FLASH_CS_PIN                        GPIO_Pin_6               
-#define FLASH_CS_GPIO_PORT                  GPIOG                     
-#define FLASH_CS_GPIO_CLK                   RCC_AHB1Periph_GPIOG
-
-#define SPI_FLASH_CS_LOW()      {FLASH_CS_GPIO_PORT->BSRRH=FLASH_CS_PIN;}
-#define SPI_FLASH_CS_HIGH()     {FLASH_CS_GPIO_PORT->BSRRL=FLASH_CS_PIN;}
+//SCK引脚
+#define SPIx_SCK_PIN                     GPIO_PIN_3
+#define SPIx_SCK_GPIO_PORT               GPIOB
+#define SPIx_SCK_AF                      GPIO_AF5_SPI1
+//MISO引脚
+#define SPIx_MISO_PIN                    GPIO_PIN_4
+#define SPIx_MISO_GPIO_PORT              GPIOB
+#define SPIx_MISO_AF                     GPIO_AF5_SPI1
+//MOSI引脚
+#define SPIx_MOSI_PIN                    GPIO_PIN_5
+#define SPIx_MOSI_GPIO_PORT              GPIOB
+#define SPIx_MOSI_AF                     GPIO_AF5_SPI1
+//CS(NSS)引脚
+#define FLASH_CS_PIN                     GPIO_PIN_6               
+#define FLASH_CS_GPIO_PORT               GPIOG                     
+//设置为高电平	
+#define	digitalHi(p,i)			    {p->BSRRL=i;}		
+//输出低电平
+#define digitalLo(p,i)			    {p->BSRRH=i;}				
+#define SPI_FLASH_CS_LOW()      digitalLo(FLASH_CS_GPIO_PORT,FLASH_CS_PIN )
+#define SPI_FLASH_CS_HIGH()     digitalHi(FLASH_CS_GPIO_PORT,FLASH_CS_PIN )
 /*SPI接口定义-结尾****************************/
 
 /*等待超时时间*/
-#define SPIT_FLAG_TIMEOUT         ((uint32_t)0x1000)
+#define SPIT_FLAG_TIMEOUT         ((uint32_t)0xFF000)
 #define SPIT_LONG_TIMEOUT         ((uint32_t)(10 * SPIT_FLAG_TIMEOUT))
 
 /*信息输出*/
@@ -87,21 +89,21 @@
 
 
 void SPI_FLASH_Init(void);
-void SPI_FLASH_SectorErase(u32 SectorAddr);
+void SPI_FLASH_SectorErase(uint32_t SectorAddr);
 void SPI_FLASH_BulkErase(void);
-void SPI_FLASH_PageWrite(u8* pBuffer, u32 WriteAddr, u16 NumByteToWrite);
-void SPI_FLASH_BufferWrite(u8* pBuffer, u32 WriteAddr, u16 NumByteToWrite);
-void SPI_FLASH_BufferRead(u8* pBuffer, u32 ReadAddr, u16 NumByteToRead);
-u32 SPI_FLASH_ReadID(void);
-u32 SPI_FLASH_ReadDeviceID(void);
-void SPI_FLASH_StartReadSequence(u32 ReadAddr);
+void SPI_FLASH_PageWrite(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite);
+void SPI_FLASH_BufferWrite(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite);
+void SPI_FLASH_BufferRead(uint8_t* pBuffer, uint32_t ReadAddr, uint16_t NumByteToRead);
+uint32_t SPI_FLASH_ReadID(void);
+uint32_t SPI_FLASH_ReadDeviceID(void);
+void SPI_FLASH_StartReadSequence(uint32_t ReadAddr);
 void SPI_Flash_PowerDown(void);
 void SPI_Flash_WAKEUP(void);
 
 
-u8 SPI_FLASH_ReadByte(void);
-u8 SPI_FLASH_SendByte(u8 byte);
-u16 SPI_FLASH_SendHalfWord(u16 HalfWord);
+uint8_t SPI_FLASH_ReadByte(void);
+uint8_t SPI_FLASH_SendByte(uint8_t byte);
+uint16_t SPI_FLASH_SendHalfWord(uint16_t HalfWord);
 void SPI_FLASH_WriteEnable(void);
 void SPI_FLASH_WaitForWriteEnd(void);
 

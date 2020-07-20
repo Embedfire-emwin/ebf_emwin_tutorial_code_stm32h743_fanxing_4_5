@@ -24,7 +24,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 /* STemWIN头文件 */
-#include "ScreenShot.h"
+//#include "ScreenShot.h"
 #include "MainTask.h"
 #include "DIALOG.h"
 
@@ -33,11 +33,11 @@
  ******************************************************************************/
 extern GUI_CONST_STORAGE GUI_BITMAP bmngc7293;
 
-UINT    f_num;
-extern FATFS   fs;								/* FatFs文件系统对象 */
-extern FIL     file;							/* file objects */
-extern FRESULT result; 
-extern DIR     dir;
+//UINT    f_num;
+//extern FATFS   fs;								/* FatFs文件系统对象 */
+//extern FIL     file;							/* file objects */
+//extern FRESULT result; 
+//extern DIR     dir;
 /*******************************************************************************
  * 函数
  ******************************************************************************/
@@ -57,7 +57,7 @@ static void ShowBitmap(void)
     }
   }
 }
-
+#if 0
 /**
   * @brief 从外部存储器中读取并绘制BMP图片数据
   * @note 无
@@ -102,7 +102,7 @@ static void ShowStreamedBitmap(const char *sFilename, int x, int y)
 	/* 释放内存 */
 	GUI_ALLOC_Free(hMem);
 }
-
+#endif
 /**
   * @brief GUI主任务
   * @note 无

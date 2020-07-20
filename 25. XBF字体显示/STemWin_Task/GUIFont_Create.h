@@ -2,7 +2,7 @@
 #define	__GUIFONT_CREATE_H
 
 #include "GUI.h"
-#include "stm32f4xx.h"
+#include "stm32h7xx.h"
 
 //设置XBF字体存储的位置：
 //FLASH非文件系统区域（推荐） 	USE_FLASH_FONT             	0 

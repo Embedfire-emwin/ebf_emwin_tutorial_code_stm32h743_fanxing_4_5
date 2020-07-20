@@ -24,9 +24,6 @@
 #include "task.h"
 /* STemWIN头文件 */
 #include "IconviewDLG.h"
-#include "ScreenShot.h"
-
-#include "usart/bsp_debug_usart.h"
 
 /*********************************************************************
 *
@@ -56,11 +53,11 @@ typedef struct {
 **********************************************************************
 */
 char *_acbuffer = NULL;
-UINT    f_num;
-extern FATFS   fs;								/* FatFs文件系统对象 */
-extern FIL     file;							/* file objects */
-extern FRESULT result; 
-extern DIR     dir;
+//UINT    f_num;
+//extern FATFS   fs;								/* FatFs文件系统对象 */
+//extern FIL     file;							/* file objects */
+//extern FRESULT result; 
+//extern DIR     dir;
 
 extern GUI_CONST_STORAGE GUI_BITMAP bmsetting;
 extern GUI_CONST_STORAGE GUI_BITMAP bmclock;
@@ -93,6 +90,7 @@ static GUI_MEMDEV_Handle hJPEG ;
 *
 **********************************************************************
 */
+#if 0
 /**
   * @brief 使用内存设备加载BMP图片数据
   * @note wu
@@ -148,7 +146,7 @@ static WM_HMEM LoadJPEG_UsingMEMDEV(const char *sFilename)
 	
 	return hJPEG;
 }
-
+#endif
 /**
   * @brief 应用窗口回调函数
   * @note 无

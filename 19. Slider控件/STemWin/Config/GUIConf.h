@@ -26,9 +26,9 @@ Full source code is available at: www.segger.com
 
 We appreciate your understanding and fairness.
 ----------------------------------------------------------------------
-File        : GUIConf.c
-Purpose     : Display controller initialization
----------------------------END-OF-HEADER------------------------------
+File        : GUIConf.h
+Purpose     : Configures emWins abilities, fonts etc.
+----------------------------------------------------------------------
 */
 
 /**
@@ -45,7 +45,7 @@ Purpose     : Display controller initialization
   *
   ******************************************************************************
   */
-
+ 
 #ifndef GUICONF_H
 #define GUICONF_H
 
@@ -98,6 +98,8 @@ Purpose     : Display controller initialization
 *
 *       ARGB support
 */
-#define GUI_USE_ARGB              (1)
+#define GUI_USE_ARGB                 (1)
+
+#define GUI_DEBUG_LEVEL           GUI_DEBUG_LEVEL_LOG_ALL
 
 #endif  /* Avoid multiple inclusion */

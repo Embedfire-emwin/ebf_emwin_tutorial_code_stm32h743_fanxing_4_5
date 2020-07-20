@@ -70,8 +70,8 @@
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
-#include "stm32f4xx.h"
-#include "./usart/bsp_debug_usart.h"
+#include "stm32h7xx.h"
+#include "./usart/bsp_usart.h"
 
 
 //针对不同的编译器调用不同的stdint.h文件
@@ -184,7 +184,7 @@
 //支持静态内存
 #define configSUPPORT_STATIC_ALLOCATION					0					
 //系统所有总的堆大小
-#define configTOTAL_HEAP_SIZE					((size_t)(36*1024))    
+#define configTOTAL_HEAP_SIZE					((size_t)(128*1024))    
 
 
 /***************************************************************
@@ -273,7 +273,7 @@
 #define INCLUDE_vTaskDelay				           1
 #define INCLUDE_eTaskGetState			           1
 #define INCLUDE_xTimerPendFunctionCall	     0
-//#define INCLUDE_xTaskGetCurrentTaskHandle       1
+#define INCLUDE_xTaskGetCurrentTaskHandle    1
 //#define INCLUDE_uxTaskGetStackHighWaterMark     0
 //#define INCLUDE_xTaskGetIdleTaskHandle          0
 

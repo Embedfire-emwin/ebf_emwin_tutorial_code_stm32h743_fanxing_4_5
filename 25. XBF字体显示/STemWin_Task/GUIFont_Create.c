@@ -17,11 +17,9 @@
 	
 #include "./flash/bsp_spi_flash.h"
 #include "GUIFont_Create.h"
-#include "ff.h"
 /* FreeRTOS头文件 */
 #include "FreeRTOS.h"
 #include "task.h"
-
 
 #include <string.h>
 #include <stdlib.h>
@@ -42,7 +40,7 @@ GUI_FONT     	FONT_SIYUANHEITI_36;
 #if (XBF_FONT_SOURCE == USE_FLASH_FONT)
 
 	/* 资源烧录到的FLASH基地址（目录地址，需与烧录程序一致） */
-	#define RESOURCE_BASE_ADDR	(8*1024*1024)
+	#define RESOURCE_BASE_ADDR	(4096)
 	/* 存储在FLASH中的资源目录大小 */
 	#define CATALOG_SIZE				(8*1024)
 

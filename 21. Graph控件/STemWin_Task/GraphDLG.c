@@ -21,7 +21,6 @@
 #include "GraphDLG.h"
 #include "stdlib.h"
 #include "./adc/bsp_adc.h"
-#include "./usart/bsp_debug_usart.h"
 
 /*********************************************************************
 *
@@ -134,7 +133,7 @@ void MainTask(void)
 	while(1)
 	{
 		/* 向GRAPH数据对象添加数据 */
-		GRAPH_DATA_YT_AddValue(Graphdata, ADC_ConvertedValue/6);
+		GRAPH_DATA_YT_AddValue(Graphdata, ADC_ConvertedValue/60);
 		GUI_Delay(30);
 	}
 }

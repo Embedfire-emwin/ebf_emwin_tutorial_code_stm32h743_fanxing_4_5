@@ -3,12 +3,12 @@
   * @file    MainTask.c
   * @author  fire
   * @version V1.0
-  * @date    2019-xx-xx
+  * @date    2020-xx-xx
   * @brief   FreeRTOS v9.0.0 + STM32 工程模版
   *********************************************************************
   * @attention
   *
-  * 实验平台:野火  STM32 F407 开发板 
+  * 实验平台:野火  STM32 H743 战擎开发板 
   * 论坛    :http://www.firebbs.cn
   * 淘宝    :https://fire-stm32.taobao.com
   *

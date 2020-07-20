@@ -1,7 +1,11 @@
 #ifndef __I2C_TOUCH_H
 #define	__I2C_TOUCH_H
 
-#include "stm32f4xx.h"
+#include "stm32h7xx.h"
+
+/*使用软件IIC，把SOFT_IIC宏设置为1，硬件IIC则设置为0
+!!使用硬件IIC时非常容易出现错误，不推荐*/
+#define SOFT_IIC      1
 
 /*设定使用的电容屏IIC设备地址*/
 #define GTP_ADDRESS            0xBA
@@ -10,40 +14,41 @@
 #define I2CT_LONG_TIMEOUT         ((uint32_t)(10 * I2CT_FLAG_TIMEOUT))
 
 /*I2C引脚*/
-#define GTP_I2C_SCL_PIN                  GPIO_Pin_4                
-#define GTP_I2C_SCL_GPIO_PORT            GPIOH                      
-#define GTP_I2C_SCL_GPIO_CLK             RCC_AHB1Periph_GPIOH
-#define GTP_I2C_SCL_SOURCE               GPIO_PinSource4
+#define GTP_I2C                          I2C2
+#define GTP_I2C_CLK_ENABLE()             __HAL_RCC_I2C2_CLK_ENABLE()
+#define GTP_I2C_CLK_INIT				         RCC_APB1PeriphClockCmd	
 
-#define GTP_I2C_SDA_PIN                  GPIO_Pin_5                 
-#define GTP_I2C_SDA_GPIO_PORT            GPIOH                
-#define GTP_I2C_SDA_GPIO_CLK             RCC_AHB1Periph_GPIOH
-#define GTP_I2C_SDA_SOURCE               GPIO_PinSource5
+#define GTP_I2C_SCL_PIN                  GPIO_PIN_4                 
+#define GTP_I2C_SCL_GPIO_PORT            GPIOH                       
+#define GTP_I2C_SCL_GPIO_CLK_ENABLE()    __HAL_RCC_GPIOH_CLK_ENABLE()
+#define GTP_I2C_SCL_AF                   GPIO_AF4_I2C2
+
+#define GTP_I2C_SDA_PIN                  GPIO_PIN_5                  
+#define GTP_I2C_SDA_GPIO_PORT            GPIOH                     
+#define GTP_I2C_SDA_GPIO_CLK_ENABLE()    __HAL_RCC_GPIOH_CLK_ENABLE()
+#define GTP_I2C_SDA_AF                   GPIO_AF4_I2C2
 
 /*复位引脚*/
-#define GTP_RST_GPIO_PORT                GPIOD
-#define GTP_RST_GPIO_CLK                 RCC_AHB1Periph_GPIOD
-#define GTP_RST_GPIO_PIN                 GPIO_Pin_6
+#define GTP_RST_GPIO_PORT                GPIOI
+#define GTP_RST_GPIO_CLK_ENABLE()        __HAL_RCC_GPIOI_CLK_ENABLE()
+#define GTP_RST_GPIO_PIN                 GPIO_PIN_8
 /*中断引脚*/
-#define GTP_INT_GPIO_PORT                GPIOG
-#define GTP_INT_GPIO_CLK                 RCC_AHB1Periph_GPIOG
-#define GTP_INT_GPIO_PIN                 GPIO_Pin_8
-#define GTP_INT_EXTI_PORTSOURCE          EXTI_PortSourceGPIOG
-#define GTP_INT_EXTI_PINSOURCE           EXTI_PinSource8
-#define GTP_INT_EXTI_LINE                EXTI_Line8
-#define GTP_INT_EXTI_IRQ                 EXTI9_5_IRQn
+#define GTP_INT_GPIO_PORT                GPIOD
+#define GTP_INT_GPIO_CLK_ENABLE()        __HAL_RCC_GPIOD_CLK_ENABLE()
+#define GTP_INT_GPIO_PIN                 GPIO_PIN_13
+#define GTP_INT_EXTI_IRQ                 EXTI15_10_IRQn
 /*中断服务函数*/
-#define GTP_IRQHandler                   EXTI9_5_IRQHandler
+#define GTP_IRQHandler                   EXTI15_10_IRQHandler
 
 
 //软件IIC使用的宏
-#define I2C_SCL_1()  GPIO_SetBits(GTP_I2C_SCL_GPIO_PORT, GTP_I2C_SCL_PIN)		/* SCL = 1 */
-#define I2C_SCL_0()  GPIO_ResetBits(GTP_I2C_SCL_GPIO_PORT, GTP_I2C_SCL_PIN)		/* SCL = 0 */
+#define I2C_SCL_1()  HAL_GPIO_WritePin(GTP_I2C_SCL_GPIO_PORT, GTP_I2C_SCL_PIN,GPIO_PIN_SET)		/* SCL = 1 */
+#define I2C_SCL_0()  HAL_GPIO_WritePin(GTP_I2C_SCL_GPIO_PORT, GTP_I2C_SCL_PIN,GPIO_PIN_RESET)		/* SCL = 0 */
 
-#define I2C_SDA_1()  GPIO_SetBits(GTP_I2C_SDA_GPIO_PORT, GTP_I2C_SDA_PIN)		/* SDA = 1 */
-#define I2C_SDA_0()  GPIO_ResetBits(GTP_I2C_SDA_GPIO_PORT, GTP_I2C_SDA_PIN)		/* SDA = 0 */
+#define I2C_SDA_1()  HAL_GPIO_WritePin(GTP_I2C_SDA_GPIO_PORT, GTP_I2C_SDA_PIN,GPIO_PIN_SET)		/* SDA = 1 */
+#define I2C_SDA_0()  HAL_GPIO_WritePin(GTP_I2C_SDA_GPIO_PORT, GTP_I2C_SDA_PIN,GPIO_PIN_RESET)		/* SDA = 0 */
 
-#define I2C_SDA_READ()  GPIO_ReadInputDataBit(GTP_I2C_SDA_GPIO_PORT, GTP_I2C_SDA_PIN)	/* 读SDA口线状态 */
+#define I2C_SDA_READ()  HAL_GPIO_ReadPin(GTP_I2C_SDA_GPIO_PORT, GTP_I2C_SDA_PIN)	/* 读SDA口线状态 */
 
 //函数接口
 void I2C_Touch_Init(void);

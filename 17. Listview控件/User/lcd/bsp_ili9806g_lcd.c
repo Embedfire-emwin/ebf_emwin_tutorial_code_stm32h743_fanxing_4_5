@@ -16,6 +16,8 @@
 
 #include "./lcd/bsp_ili9806g_lcd.h"
 
+SRAM_HandleTypeDef  SRAM_Handler;
+FMC_NORSRAM_TimingTypeDef Timing;
 //根据液晶扫描方向而变化的XY像素宽度
 //调用ILI9806G_GramScan函数设置方向时会自动更改
 uint16_t LCD_X_LENGTH = ILI9806G_MORE_PIXEL;
@@ -25,10 +27,13 @@ uint16_t LCD_Y_LENGTH = ILI9806G_LESS_PIXEL;
 //参数可选值为0-7
 //调用ILI9806G_GramScan函数设置方向时会自动更改
 //LCD刚初始化完成时会使用本默认值
-uint8_t LCD_SCAN_MODE =5;
+uint8_t LCD_SCAN_MODE =6;
 
+#ifdef nouse
+static sFONT *LCD_Currentfonts = &Font16x32;  //英文字体
+#endif
+static uint16_t CurrentTextColor   = WHITE;//前景色
 static uint16_t CurrentBackColor   = BLACK;//背景色
-
 
 __inline void                 ILI9806G_Write_Cmd           ( uint16_t usCmd );
 __inline void                 ILI9806G_Write_Data          ( uint16_t usData );
@@ -37,7 +42,10 @@ static void                   ILI9806G_Delay               ( __IO uint32_t nCoun
 static void                   ILI9806G_GPIO_Config         ( void );
 static void                   ILI9806G_FSMC_Config         ( void );
 static void                   ILI9806G_REG_Config          ( void );
+static void                   ILI9806G_SetCursor           ( uint16_t usX, uint16_t usY );
 static __inline void          ILI9806G_FillColor           ( uint32_t ulAmout_Point, uint16_t usColor );
+static uint16_t               ILI9806G_Read_PixelData      ( void );
+
 
 /**
   * @brief  简单延时函数
@@ -55,7 +63,7 @@ static void Delay ( __IO uint32_t nCount )
   * @param  usCmd :要写入的命令（表寄存器地址）
   * @retval 无
   */	
-__inline void ILI9806G_Write_Cmd ( uint16_t usCmd )
+ void ILI9806G_Write_Cmd ( uint16_t usCmd )
 {
 	* ( __IO uint16_t * ) ( FSMC_Addr_ILI9806G_CMD ) = usCmd;
 	
@@ -67,7 +75,7 @@ __inline void ILI9806G_Write_Cmd ( uint16_t usCmd )
   * @param  usData :要写入的数据
   * @retval 无
   */	
-__inline void ILI9806G_Write_Data ( uint16_t usData )
+ void ILI9806G_Write_Data ( uint16_t usData )
 {
 	* ( __IO uint16_t * ) ( FSMC_Addr_ILI9806G_DATA ) = usData;
 	
@@ -79,7 +87,7 @@ __inline void ILI9806G_Write_Data ( uint16_t usData )
   * @param  无
   * @retval 读取到的数据
   */	
-__inline uint16_t ILI9806G_Read_Data ( void )
+ uint16_t ILI9806G_Read_Data ( void )
 {
 	return ( * ( __IO uint16_t * ) ( FSMC_Addr_ILI9806G_DATA ) );
 	
@@ -105,130 +113,70 @@ static void ILI9806G_Delay ( __IO uint32_t nCount )
   */
 static void ILI9806G_GPIO_Config ( void )
 {
-	GPIO_InitTypeDef GPIO_InitStructure;
-
-	/* 使能FSMC对应相应管脚时钟*/
-	RCC_AHB1PeriphClockCmd ( 	
-													/*控制信号*/
-													ILI9806G_CS_CLK|ILI9806G_DC_CLK|ILI9806G_WR_CLK|
-													ILI9806G_RD_CLK	|ILI9806G_BK_CLK|ILI9806G_RST_CLK|
-													/*数据信号*/
-													ILI9806G_D0_CLK|ILI9806G_D1_CLK|	ILI9806G_D2_CLK | 
-													ILI9806G_D3_CLK | ILI9806G_D4_CLK|ILI9806G_D5_CLK|
-													ILI9806G_D6_CLK | ILI9806G_D7_CLK|ILI9806G_D8_CLK|
-													ILI9806G_D9_CLK | ILI9806G_D10_CLK|ILI9806G_D11_CLK|
-													ILI9806G_D12_CLK | ILI9806G_D13_CLK|ILI9806G_D14_CLK|
-													ILI9806G_D15_CLK	, ENABLE );
-		
+	GPIO_InitTypeDef  GPIO_Initure;
+    /* Enable GPIOs clock */
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_FMC_CLK_ENABLE();			//使能FSMC时钟
+    /* Common GPIO configuration */
+  GPIO_Initure.Mode      = GPIO_MODE_OUTPUT_PP; //推挽输出
+  GPIO_Initure.Pull      = GPIO_PULLUP;
+  GPIO_Initure.Speed     = GPIO_SPEED_FREQ_HIGH;
+  
+  GPIO_Initure.Pin=GPIO_PIN_5;
+	HAL_GPIO_Init(GPIOE,&GPIO_Initure);
+ 
+  GPIO_Initure.Pin=GPIO_PIN_10;
+	HAL_GPIO_Init(GPIOG,&GPIO_Initure);
+  
+  //初始化PF11
+	GPIO_Initure.Pin=GPIO_PIN_11;
+	HAL_GPIO_Init(GPIOF,&GPIO_Initure);
+  
+  GPIO_Initure.Mode=GPIO_MODE_AF_PP; 
+  GPIO_Initure.Alternate=GPIO_AF12_FMC;	//复用为FSMC
+  
+	//初始化PD0,1,4,5,8,9,10,14,15
+	GPIO_Initure.Pin=GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_8|\
+					         GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_14|GPIO_PIN_15; 
+  HAL_GPIO_Init(GPIOD, &GPIO_Initure);
+  
+  	//初始化PE7,8,9,10,11,12,13,14,15
+	GPIO_Initure.Pin=GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11|\
+                     GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+	HAL_GPIO_Init(GPIOE,&GPIO_Initure);
 	
-	/* 配置FSMC相对应的数据线,FSMC-D0~D15 */	
-    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D0_PIN; 
-    GPIO_Init(ILI9806G_D0_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D0_PORT,ILI9806G_D0_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D1_PIN; 
-    GPIO_Init(ILI9806G_D1_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D1_PORT,ILI9806G_D1_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D2_PIN; 
-    GPIO_Init(ILI9806G_D2_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D2_PORT,ILI9806G_D2_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D3_PIN; 
-    GPIO_Init(ILI9806G_D3_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D3_PORT,ILI9806G_D3_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D4_PIN; 
-    GPIO_Init(ILI9806G_D4_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D4_PORT,ILI9806G_D4_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D5_PIN; 
-    GPIO_Init(ILI9806G_D5_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D5_PORT,ILI9806G_D5_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D6_PIN; 
-    GPIO_Init(ILI9806G_D6_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D6_PORT,ILI9806G_D6_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D7_PIN; 
-    GPIO_Init(ILI9806G_D7_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D7_PORT,ILI9806G_D7_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D8_PIN; 
-    GPIO_Init(ILI9806G_D8_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D8_PORT,ILI9806G_D8_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D9_PIN; 
-    GPIO_Init(ILI9806G_D9_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D9_PORT,ILI9806G_D9_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D10_PIN; 
-    GPIO_Init(ILI9806G_D10_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D10_PORT,ILI9806G_D10_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D11_PIN; 
-    GPIO_Init(ILI9806G_D11_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D11_PORT,ILI9806G_D11_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D12_PIN; 
-    GPIO_Init(ILI9806G_D12_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D12_PORT,ILI9806G_D12_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D13_PIN; 
-    GPIO_Init(ILI9806G_D13_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D13_PORT,ILI9806G_D13_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D14_PIN; 
-    GPIO_Init(ILI9806G_D14_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D14_PORT,ILI9806G_D14_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_D15_PIN; 
-    GPIO_Init(ILI9806G_D15_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_D15_PORT,ILI9806G_D15_PinSource,FSMC_AF);
-
-	/* 配置FSMC相对应的控制线
-	 * FSMC_NOE   :LCD-RD
-	 * FSMC_NWE   :LCD-WR
-	 * FSMC_NE1   :LCD-CS
-	 * FSMC_A0    :LCD-DC
-	 */
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_RD_PIN; 
-    GPIO_Init(ILI9806G_RD_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_RD_PORT,ILI9806G_RD_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_WR_PIN; 
-    GPIO_Init(ILI9806G_WR_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_WR_PORT,ILI9806G_WR_PinSource,FSMC_AF);
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_CS_PIN; 
-    GPIO_Init(ILI9806G_CS_PORT, &GPIO_InitStructure);   
-    GPIO_PinAFConfig(ILI9806G_CS_PORT,ILI9806G_CS_PinSource,FSMC_AF);  
-
-    GPIO_InitStructure.GPIO_Pin = ILI9806G_DC_PIN; 
-    GPIO_Init(ILI9806G_DC_PORT, &GPIO_InitStructure);
-    GPIO_PinAFConfig(ILI9806G_DC_PORT,ILI9806G_DC_PinSource,FSMC_AF);
-	
-
-  /* 配置LCD复位RST控制管脚*/
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	
-	GPIO_InitStructure.GPIO_Pin = ILI9806G_RST_PIN; 
-	GPIO_Init ( ILI9806G_RST_PORT, & GPIO_InitStructure );
-		
-	/* 配置LCD背光控制管脚BK*/
-	GPIO_InitStructure.GPIO_Pin = ILI9806G_BK_PIN; 
-	GPIO_Init ( ILI9806G_BK_PORT, & GPIO_InitStructure );
-
+	//初始化PF9
+	GPIO_Initure.Pin=GPIO_PIN_0;
+	HAL_GPIO_Init(GPIOF,&GPIO_Initure);
+  
+  
 }
+void LCD_MPU_Config(void)
+{	
+	MPU_Region_InitTypeDef MPU_Init;
 
+  /* 配置MPU之前先禁用 MPU, 配置完成以后在使能 MPU */
+	HAL_MPU_Disable();							
+  
+	/* 外部SRAM为 REGION0，大小为 2MB，此区域可读写*/
+	MPU_Init.Enable=MPU_REGION_ENABLE;	           // 使能REGION
+	MPU_Init.Number=FMC_REGION_NUMBER;		         // 设置REGION，外部SRAM使用的 REGION0
+	MPU_Init.BaseAddress=FMC_ADDRESS_START;	       // REGION 基地址
+	MPU_Init.Size=FMC_REGION_SIZE;			           // REGION 大小
+	MPU_Init.SubRegionDisable=0X00;
+	MPU_Init.TypeExtField=MPU_TEX_LEVEL0;
+	MPU_Init.AccessPermission=MPU_REGION_FULL_ACCESS;	  // 此 REGION 可读写
+	MPU_Init.DisableExec=MPU_INSTRUCTION_ACCESS_ENABLE;	// 允许读取此区域中的指令
+	MPU_Init.IsShareable=MPU_ACCESS_NOT_SHAREABLE;
+	MPU_Init.IsCacheable=MPU_ACCESS_NOT_CACHEABLE;
+	MPU_Init.IsBufferable=MPU_ACCESS_BUFFERABLE;
+  
+	HAL_MPU_ConfigRegion(&MPU_Init);
+	HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);             // 使能 MPU
+}
 
  /**
   * @brief  LCD  FSMC 模式配置
@@ -237,53 +185,45 @@ static void ILI9806G_GPIO_Config ( void )
   */
 static void ILI9806G_FSMC_Config ( void )
 {
-	FSMC_NORSRAMInitTypeDef  FSMC_NORSRAMInitStructure;
-	FSMC_NORSRAMTimingInitTypeDef  readWriteTiming; 	
+   SRAM_Handler.Instance = FMC_NORSRAM_DEVICE;
+   SRAM_Handler.Extended = FMC_NORSRAM_EXTENDED_DEVICE;
+   __HAL_RCC_FMC_CLK_ENABLE();	
+  /* SRAM device configuration */  
+  Timing.AddressSetupTime      = 0x15;
+  Timing.AddressHoldTime       = 0x00;
+  Timing.DataSetupTime         = 0x55;
+  Timing.BusTurnAroundDuration = 0x00;
+  Timing.CLKDivision           = 0x00;
+  Timing.DataLatency           = 0x00;
+  Timing.AccessMode            = FMC_ACCESS_MODE_A;
 	
-	/* 使能FSMC时钟*/
-	RCC_AHB3PeriphClockCmd(RCC_AHB3Periph_FSMC,ENABLE);
-
-	//地址建立时间（ADDSET）为1个HCLK 5/168M=30ns
-	readWriteTiming.FSMC_AddressSetupTime      = 0x04;	 //地址建立时间
-	//数据保持时间（DATAST）+ 1个HCLK = 12/168M=72ns	
-	readWriteTiming.FSMC_DataSetupTime         = 0x0b;	 //数据建立时间
-	//选择控制的模式
-	//模式B,异步NOR FLASH模式，与ILI9806G的8080时序匹配
-	readWriteTiming.FSMC_AccessMode            = FSMC_AccessMode_B;	
-	
-	/*以下配置与模式B无关*/
-	//地址保持时间（ADDHLD）模式A未用到
-	readWriteTiming.FSMC_AddressHoldTime       = 0x00;	 //地址保持时间
-	//设置总线转换周期，仅用于复用模式的NOR操作
-	readWriteTiming.FSMC_BusTurnAroundDuration = 0x00;
-	//设置时钟分频，仅用于同步类型的存储器
-	readWriteTiming.FSMC_CLKDivision           = 0x00;
-	//数据保持时间，仅用于同步型的NOR	
-	readWriteTiming.FSMC_DataLatency           = 0x00;	
-
-	
-	FSMC_NORSRAMInitStructure.FSMC_Bank                  = FSMC_Bank1_NORSRAMx;
-	FSMC_NORSRAMInitStructure.FSMC_DataAddressMux        = FSMC_DataAddressMux_Disable;
-	FSMC_NORSRAMInitStructure.FSMC_MemoryType            = FSMC_MemoryType_NOR;
-	FSMC_NORSRAMInitStructure.FSMC_MemoryDataWidth       = FSMC_MemoryDataWidth_16b;
-	FSMC_NORSRAMInitStructure.FSMC_BurstAccessMode       = FSMC_BurstAccessMode_Disable;
-	FSMC_NORSRAMInitStructure.FSMC_WaitSignalPolarity    = FSMC_WaitSignalPolarity_Low;
-	FSMC_NORSRAMInitStructure.FSMC_WrapMode              = FSMC_WrapMode_Disable;
-	FSMC_NORSRAMInitStructure.FSMC_WaitSignalActive      = FSMC_WaitSignalActive_BeforeWaitState;
-	FSMC_NORSRAMInitStructure.FSMC_WriteOperation        = FSMC_WriteOperation_Enable;
-	FSMC_NORSRAMInitStructure.FSMC_WaitSignal            = FSMC_WaitSignal_Disable;
-	FSMC_NORSRAMInitStructure.FSMC_ExtendedMode          = FSMC_ExtendedMode_Disable;
-	FSMC_NORSRAMInitStructure.FSMC_WriteBurst            = FSMC_WriteBurst_Disable;
-	FSMC_NORSRAMInitStructure.FSMC_ReadWriteTimingStruct = &readWriteTiming;
-	FSMC_NORSRAMInitStructure.FSMC_WriteTimingStruct     = &readWriteTiming;  
-	
-	FSMC_NORSRAMInit ( & FSMC_NORSRAMInitStructure ); 
-	
-	
-	/* 使能 FSMC_Bank1_NORSRAM3 */
-	FSMC_NORSRAMCmd ( FSMC_Bank1_NORSRAMx, ENABLE );  
-		
-		
+	LCD_MPU_Config();
+ //使用NE3
+  SRAM_Handler.Init.NSBank=FMC_NORSRAM_BANK3;     					        
+	//地址/数据线不复用
+	SRAM_Handler.Init.DataAddressMux=FMC_DATA_ADDRESS_MUX_DISABLE; 	
+	//NOR
+	SRAM_Handler.Init.MemoryType= FMC_MEMORY_TYPE_SRAM;//FMC_MEMORY_TYPE_NOR;   				    
+	//16位数据宽度
+	SRAM_Handler.Init.MemoryDataWidth=FMC_NORSRAM_MEM_BUS_WIDTH_16; 	
+	//是否使能突发访问,仅对同步突发存储器有效,此处未用到
+	SRAM_Handler.Init.BurstAccessMode=FMC_BURST_ACCESS_MODE_DISABLE; 
+	//等待信号的极性,仅在突发模式访问下有用
+	SRAM_Handler.Init.WaitSignalPolarity=FMC_WAIT_SIGNAL_POLARITY_LOW;
+	//存储器是在等待周期之前的一个时钟周期还是等待周期期间使能NWAIT
+	SRAM_Handler.Init.WaitSignalActive=FMC_WAIT_TIMING_BEFORE_WS;   	
+	//存储器写使能
+	SRAM_Handler.Init.WriteOperation=FMC_WRITE_OPERATION_ENABLE;    	
+	//等待使能位,此处未用到
+	SRAM_Handler.Init.WaitSignal=FMC_WAIT_SIGNAL_DISABLE;           	
+	//读写使用相同的时序
+	SRAM_Handler.Init.ExtendedMode=FMC_EXTENDED_MODE_DISABLE;        
+	//是否使能同步传输模式下的等待信号,此处未用到
+	SRAM_Handler.Init.AsynchronousWait=FMC_ASYNCHRONOUS_WAIT_DISABLE;
+	//禁止突发写
+	SRAM_Handler.Init.WriteBurst=FMC_WRITE_BURST_DISABLE;           	
+  SRAM_Handler.Init.ContinuousClock=FMC_CONTINUOUS_CLOCK_SYNC_ASYNC;
+	HAL_SRAM_Init(&SRAM_Handler,&Timing,&Timing);	
 }
 
 
@@ -656,14 +596,14 @@ void ILI9806G_Init ( void )
 {
 	ILI9806G_GPIO_Config ();
 	ILI9806G_FSMC_Config ();
-	
-	
+
+
 	ILI9806G_Rst ();
 	ILI9806G_REG_Config ();
-	
+
 	//设置默认扫描方向，其中 6 模式为大部分液晶例程的默认显示方向  
 	ILI9806G_GramScan(LCD_SCAN_MODE);
-    
+
 	ILI9806G_Clear(0,0,LCD_X_LENGTH,LCD_Y_LENGTH);	/* 清屏，显示全黑 */
 	ILI9806G_BackLed_Control ( ENABLE );      //点亮LCD背光灯
 }
@@ -679,11 +619,17 @@ void ILI9806G_Init ( void )
 void ILI9806G_BackLed_Control ( FunctionalState enumState )
 {
 	if ( enumState )
-		 GPIO_SetBits( ILI9806G_BK_PORT, ILI9806G_BK_PIN );	
+  {
+    digitalH( GPIOE, GPIO_PIN_5  );	
+  }
 	else
-		 GPIO_ResetBits( ILI9806G_BK_PORT, ILI9806G_BK_PIN );
+  {
+    digitalL( GPIOE, GPIO_PIN_5 );
+  }
 		
 }
+
+
 
 /**
  * @brief  ILI9806G 软件复位
@@ -692,11 +638,11 @@ void ILI9806G_BackLed_Control ( FunctionalState enumState )
  */
 void ILI9806G_Rst ( void )
 {			
-	GPIO_ResetBits ( ILI9806G_RST_PORT, ILI9806G_RST_PIN );	 //低电平复位
+	digitalL( GPIOF,GPIO_PIN_11 );	 //低电平复位
 
 	ILI9806G_Delay ( 0xAFF ); 					   
 
-	GPIO_SetBits ( ILI9806G_RST_PORT, ILI9806G_RST_PIN );		 	 
+	digitalH( GPIOF,GPIO_PIN_11);		 	 
 
 	ILI9806G_Delay ( 0xAFF ); 	
 	
@@ -822,6 +768,19 @@ void ILI9806G_OpenWindow ( uint16_t usX, uint16_t usY, uint16_t usWidth, uint16_
 	
 }
 
+
+/**
+ * @brief  设定ILI9806G的光标坐标
+ * @param  usX ：在特定扫描方向下光标的X坐标
+ * @param  usY ：在特定扫描方向下光标的Y坐标
+ * @retval 无
+ */
+static void ILI9806G_SetCursor ( uint16_t usX, uint16_t usY )	
+{
+	ILI9806G_OpenWindow ( usX, usY, 1, 1 );
+}
+
+
 /**
  * @brief  在ILI9806G显示器上以某一颜色填充像素点
  * @param  ulAmout_Point ：要填充颜色的像素点的总数目
@@ -860,6 +819,489 @@ void ILI9806G_Clear ( uint16_t usX, uint16_t usY, uint16_t usWidth, uint16_t usH
 	
 }
 
+
+/**
+ * @brief  对ILI9806G显示器的某一点以某种颜色进行填充
+ * @param  usX ：在特定扫描方向下该点的X坐标
+ * @param  usY ：在特定扫描方向下该点的Y坐标
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_SetPointPixel ( uint16_t usX, uint16_t usY )	
+{	
+	if ( ( usX < LCD_X_LENGTH ) && ( usY < LCD_Y_LENGTH ) )
+  {
+		ILI9806G_SetCursor ( usX, usY );
+		
+		ILI9806G_FillColor ( 1, CurrentTextColor );
+	}
+	
+}
+
+
+/**
+ * @brief  读取ILI9806G GRAN 的一个像素数据
+ * @param  无
+ * @retval 像素数据
+ */
+static uint16_t ILI9806G_Read_PixelData ( void )	
+{	
+	uint16_t usR=0, usG=0, usB=0 ;
+
+	
+	ILI9806G_Write_Cmd ( 0x2E );   /* 读数据 */
+	
+	usR = ILI9806G_Read_Data (); 	/*FIRST READ OUT DUMMY DATA*/
+	
+	usR = ILI9806G_Read_Data ();  	/*READ OUT RED DATA  */
+	usB = ILI9806G_Read_Data ();  	/*READ OUT BLUE DATA*/
+	usG = ILI9806G_Read_Data ();  	/*READ OUT GREEN DATA*/	
+	
+  return ( ( ( usR >> 11 ) << 11 ) | ( ( usG >> 10 ) << 5 ) | ( usB >> 11 ) );
+	
+}
+
+
+/**
+ * @brief  获取 ILI9806G 显示器上某一个坐标点的像素数据
+ * @param  usX ：在特定扫描方向下该点的X坐标
+ * @param  usY ：在特定扫描方向下该点的Y坐标
+ * @retval 像素数据
+ */
+uint16_t ILI9806G_GetPointPixel ( uint16_t usX, uint16_t usY )
+{ 
+	uint16_t usPixelData;
+
+	
+	ILI9806G_SetCursor ( usX, usY );
+	
+	usPixelData = ILI9806G_Read_PixelData ();
+	
+	return usPixelData;
+	
+}
+
+
+/**
+ * @brief  在 ILI9806G 显示器上使用 Bresenham 算法画线段 
+ * @param  usX1 ：在特定扫描方向下线段的一个端点X坐标
+ * @param  usY1 ：在特定扫描方向下线段的一个端点Y坐标
+ * @param  usX2 ：在特定扫描方向下线段的另一个端点X坐标
+ * @param  usY2 ：在特定扫描方向下线段的另一个端点Y坐标
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DrawLine ( uint16_t usX1, uint16_t usY1, uint16_t usX2, uint16_t usY2 )
+{
+	uint16_t us; 
+	uint16_t usX_Current, usY_Current;
+	
+	int32_t lError_X = 0, lError_Y = 0, lDelta_X, lDelta_Y, lDistance; 
+	int32_t lIncrease_X, lIncrease_Y; 	
+	
+	
+	lDelta_X = usX2 - usX1; //计算坐标增量 
+	lDelta_Y = usY2 - usY1; 
+	
+	usX_Current = usX1; 
+	usY_Current = usY1; 
+	
+	
+	if ( lDelta_X > 0 ) 
+		lIncrease_X = 1; //设置单步方向 
+	
+	else if ( lDelta_X == 0 ) 
+		lIncrease_X = 0;//垂直线 
+	
+	else 
+  { 
+    lIncrease_X = -1;
+    lDelta_X = - lDelta_X;
+  } 
+
+	
+	if ( lDelta_Y > 0 )
+		lIncrease_Y = 1; 
+	
+	else if ( lDelta_Y == 0 )
+		lIncrease_Y = 0;//水平线 
+	
+	else 
+  {
+    lIncrease_Y = -1;
+    lDelta_Y = - lDelta_Y;
+  } 
+
+	
+	if (  lDelta_X > lDelta_Y )
+		lDistance = lDelta_X; //选取基本增量坐标轴 
+	
+	else 
+		lDistance = lDelta_Y; 
+
+	
+	for ( us = 0; us <= lDistance + 1; us ++ )//画线输出 
+	{  
+		ILI9806G_SetPointPixel ( usX_Current, usY_Current );//画点 
+		
+		lError_X += lDelta_X ; 
+		lError_Y += lDelta_Y ; 
+		
+		if ( lError_X > lDistance ) 
+		{ 
+			lError_X -= lDistance; 
+			usX_Current += lIncrease_X; 
+		}  
+		
+		if ( lError_Y > lDistance ) 
+		{ 
+			lError_Y -= lDistance; 
+			usY_Current += lIncrease_Y; 
+		} 
+		
+	}  
+	
+	
+}   
+
+
+/**
+ * @brief  在 ILI9806G 显示器上画一个矩形
+ * @param  usX_Start ：在特定扫描方向下矩形的起始点X坐标
+ * @param  usY_Start ：在特定扫描方向下矩形的起始点Y坐标
+ * @param  usWidth：矩形的宽度（单位：像素）
+ * @param  usHeight：矩形的高度（单位：像素）
+ * @param  ucFilled ：选择是否填充该矩形
+  *   该参数为以下值之一：
+  *     @arg 0 :空心矩形
+  *     @arg 1 :实心矩形 
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DrawRectangle ( uint16_t usX_Start, uint16_t usY_Start, uint16_t usWidth, uint16_t usHeight, uint8_t ucFilled )
+{
+	if ( ucFilled )
+	{
+		ILI9806G_OpenWindow ( usX_Start, usY_Start, usWidth, usHeight );
+		ILI9806G_FillColor ( usWidth * usHeight ,CurrentTextColor);	
+	}
+	else
+	{
+		ILI9806G_DrawLine ( usX_Start, usY_Start, usX_Start + usWidth - 1, usY_Start );
+		ILI9806G_DrawLine ( usX_Start, usY_Start + usHeight - 1, usX_Start + usWidth - 1, usY_Start + usHeight - 1 );
+		ILI9806G_DrawLine ( usX_Start, usY_Start, usX_Start, usY_Start + usHeight - 1 );
+		ILI9806G_DrawLine ( usX_Start + usWidth - 1, usY_Start, usX_Start + usWidth - 1, usY_Start + usHeight - 1 );		
+	}
+
+}
+
+
+/**
+ * @brief  在 ILI9806G 显示器上使用 Bresenham 算法画圆
+ * @param  usX_Center ：在特定扫描方向下圆心的X坐标
+ * @param  usY_Center ：在特定扫描方向下圆心的Y坐标
+ * @param  usRadius：圆的半径（单位：像素）
+ * @param  ucFilled ：选择是否填充该圆
+  *   该参数为以下值之一：
+  *     @arg 0 :空心圆
+  *     @arg 1 :实心圆
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DrawCircle ( uint16_t usX_Center, uint16_t usY_Center, uint16_t usRadius, uint8_t ucFilled )
+{
+	int16_t sCurrentX, sCurrentY;
+	int16_t sError;
+	
+	
+	sCurrentX = 0; sCurrentY = usRadius;	  
+	
+	sError = 3 - ( usRadius << 1 );     //判断下个点位置的标志
+	
+	
+	while ( sCurrentX <= sCurrentY )
+	{
+		int16_t sCountY;
+		
+		
+		if ( ucFilled ) 			
+			for ( sCountY = sCurrentX; sCountY <= sCurrentY; sCountY ++ ) 
+			{                      
+				ILI9806G_SetPointPixel ( usX_Center + sCurrentX, usY_Center + sCountY );           //1，研究对象 
+				ILI9806G_SetPointPixel ( usX_Center - sCurrentX, usY_Center + sCountY );           //2       
+				ILI9806G_SetPointPixel ( usX_Center - sCountY,   usY_Center + sCurrentX );           //3
+				ILI9806G_SetPointPixel ( usX_Center - sCountY,   usY_Center - sCurrentX );           //4
+				ILI9806G_SetPointPixel ( usX_Center - sCurrentX, usY_Center - sCountY );           //5    
+        ILI9806G_SetPointPixel ( usX_Center + sCurrentX, usY_Center - sCountY );           //6
+				ILI9806G_SetPointPixel ( usX_Center + sCountY,   usY_Center - sCurrentX );           //7 	
+        ILI9806G_SetPointPixel ( usX_Center + sCountY,   usY_Center + sCurrentX );           //0				
+			}
+		
+		else
+		{          
+			ILI9806G_SetPointPixel ( usX_Center + sCurrentX, usY_Center + sCurrentY );             //1，研究对象
+			ILI9806G_SetPointPixel ( usX_Center - sCurrentX, usY_Center + sCurrentY );             //2      
+			ILI9806G_SetPointPixel ( usX_Center - sCurrentY, usY_Center + sCurrentX );             //3
+			ILI9806G_SetPointPixel ( usX_Center - sCurrentY, usY_Center - sCurrentX );             //4
+			ILI9806G_SetPointPixel ( usX_Center - sCurrentX, usY_Center - sCurrentY );             //5       
+			ILI9806G_SetPointPixel ( usX_Center + sCurrentX, usY_Center - sCurrentY );             //6
+			ILI9806G_SetPointPixel ( usX_Center + sCurrentY, usY_Center - sCurrentX );             //7 
+			ILI9806G_SetPointPixel ( usX_Center + sCurrentY, usY_Center + sCurrentX );             //0
+    }			
+		
+		
+		sCurrentX ++;
+
+		
+		if ( sError < 0 ) 
+			sError += 4 * sCurrentX + 6;	  
+		
+		else
+		{
+			sError += 10 + 4 * ( sCurrentX - sCurrentY );   
+			sCurrentY --;
+		} 	
+		
+		
+	}
+	
+	
+}
+#ifdef nouse
+/**
+ * @brief  在 ILI9806G 显示器上显示一个英文字符
+ * @param  usX ：在特定扫描方向下字符的起始X坐标
+ * @param  usY ：在特定扫描方向下该点的起始Y坐标
+ * @param  cChar ：要显示的英文字符
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DispChar_EN ( uint16_t usX, uint16_t usY, const char cChar )
+{
+	uint8_t  byteCount, bitCount,fontLength;	
+	uint16_t ucRelativePositon;
+	uint8_t *Pfont;
+	
+	//对ascii码表偏移（字模表不包含ASCII表的前32个非图形符号）
+	ucRelativePositon = cChar - ' ';
+	
+	//每个字模的字节数
+	fontLength = (LCD_Currentfonts->Width*LCD_Currentfonts->Height)/8;
+		
+	//字模首地址
+	/*ascii码表偏移值乘以每个字模的字节数，求出字模的偏移位置*/
+	Pfont = (uint8_t *)&LCD_Currentfonts->table[ucRelativePositon * fontLength];
+	
+	//设置显示窗口
+	ILI9806G_OpenWindow ( usX, usY, LCD_Currentfonts->Width, LCD_Currentfonts->Height);
+	
+	ILI9806G_Write_Cmd ( CMD_SetPixel );			
+
+	//按字节读取字模数据
+	//由于前面直接设置了显示窗口，显示数据会自动换行
+	for ( byteCount = 0; byteCount < fontLength; byteCount++ )
+	{
+			//一位一位处理要显示的颜色
+			for ( bitCount = 0; bitCount < 8; bitCount++ )
+			{
+					if ( Pfont[byteCount] & (0x80>>bitCount) )
+						ILI9806G_Write_Data ( CurrentTextColor );			
+					else
+						ILI9806G_Write_Data ( CurrentBackColor );
+			}	
+	}	
+}
+
+
+/**
+ * @brief  在 ILI9806G 显示器上显示英文字符串
+ * @param  line ：在特定扫描方向下字符串的起始Y坐标
+  *   本参数可使用宏LINE(0)、LINE(1)等方式指定文字坐标，
+  *   宏LINE(x)会根据当前选择的字体来计算Y坐标值。
+	*		显示中文且使用LINE宏时，需要把英文字体设置成Font8x16
+ * @param  pStr ：要显示的英文字符串的首地址
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DispStringLine_EN (  uint16_t line,  char * pStr )
+{
+	uint16_t usX = 0;
+	
+	while ( * pStr != '\0' )
+	{
+		if ( ( usX - ILI9806G_DispWindow_X_Star + LCD_Currentfonts->Width ) > LCD_X_LENGTH )
+		{
+			usX = ILI9806G_DispWindow_X_Star;
+			line += LCD_Currentfonts->Height;
+		}
+		
+		if ( ( line - ILI9806G_DispWindow_Y_Star + LCD_Currentfonts->Height ) > LCD_Y_LENGTH )
+		{
+			usX = ILI9806G_DispWindow_X_Star;
+			line = ILI9806G_DispWindow_Y_Star;
+		}
+		
+		ILI9806G_DispChar_EN ( usX, line, * pStr);
+		
+		pStr ++;
+		
+		usX += LCD_Currentfonts->Width;
+		
+	}
+	
+}
+
+
+/**
+ * @brief  在 ILI9806G 显示器上显示英文字符串
+ * @param  usX ：在特定扫描方向下字符的起始X坐标
+ * @param  usY ：在特定扫描方向下字符的起始Y坐标
+ * @param  pStr ：要显示的英文字符串的首地址
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DispString_EN ( 	uint16_t usX ,uint16_t usY,  char * pStr )
+{
+	while ( * pStr != '\0' )
+	{
+		if ( ( usX - ILI9806G_DispWindow_X_Star + LCD_Currentfonts->Width ) > LCD_X_LENGTH )
+		{
+			usX = ILI9806G_DispWindow_X_Star;
+			usY += LCD_Currentfonts->Height;
+		}
+		
+		if ( ( usY - ILI9806G_DispWindow_Y_Star + LCD_Currentfonts->Height ) > LCD_Y_LENGTH )
+		{
+			usX = ILI9806G_DispWindow_X_Star;
+			usY = ILI9806G_DispWindow_Y_Star;
+		}
+		
+		ILI9806G_DispChar_EN ( usX, usY, * pStr);
+		
+		pStr ++;
+		
+		usX += LCD_Currentfonts->Width;
+		
+	}
+	
+}
+
+
+/**
+ * @brief  在 ILI9806G 显示器上显示英文字符串(沿Y轴方向)
+ * @param  usX ：在特定扫描方向下字符的起始X坐标
+ * @param  usY ：在特定扫描方向下字符的起始Y坐标
+ * @param  pStr ：要显示的英文字符串的首地址
+ * @note 可使用LCD_SetBackColor、LCD_SetTextColor、LCD_SetColors函数设置颜色
+ * @retval 无
+ */
+void ILI9806G_DispString_EN_YDir (	 uint16_t usX,uint16_t usY ,  char * pStr )
+{	
+	while ( * pStr != '\0' )
+	{
+		if ( ( usY - ILI9806G_DispWindow_Y_Star + LCD_Currentfonts->Height ) >LCD_Y_LENGTH  )
+		{
+			usY = ILI9806G_DispWindow_Y_Star;
+			usX += LCD_Currentfonts->Width;
+		}
+		
+		if ( ( usX - ILI9806G_DispWindow_X_Star + LCD_Currentfonts->Width ) >  LCD_X_LENGTH)
+		{
+			usX = ILI9806G_DispWindow_X_Star;
+			usY = ILI9806G_DispWindow_Y_Star;
+		}
+		
+		ILI9806G_DispChar_EN ( usX, usY, * pStr);
+		
+		pStr ++;
+		
+		usY += LCD_Currentfonts->Height;		
+	}	
+}
+
+
+/**
+  * @brief  设置英文字体类型
+  * @param  fonts: 指定要选择的字体
+	*		参数为以下值之一
+  * 	@arg：Font24x32;
+  * 	@arg：Font16x24;
+  * 	@arg：Font8x16;
+  * @retval None
+  */
+void LCD_SetFont(sFONT *fonts)
+{
+  LCD_Currentfonts = fonts;
+}
+
+/**
+  * @brief  获取当前字体类型
+  * @param  None.
+  * @retval 返回当前字体类型
+  */
+sFONT *LCD_GetFont(void)
+{
+  return LCD_Currentfonts;
+}
+
+
+/**
+  * @brief  设置LCD的前景(字体)及背景颜色,RGB565
+  * @param  TextColor: 指定前景(字体)颜色
+  * @param  BackColor: 指定背景颜色
+  * @retval None
+  */
+void LCD_SetColors(uint16_t TextColor, uint16_t BackColor) 
+{
+  CurrentTextColor = TextColor; 
+  CurrentBackColor = BackColor;
+}
+
+/**
+  * @brief  获取LCD的前景(字体)及背景颜色,RGB565
+  * @param  TextColor: 用来存储前景(字体)颜色的指针变量
+  * @param  BackColor: 用来存储背景颜色的指针变量
+  * @retval None
+  */
+void LCD_GetColors(uint16_t *TextColor, uint16_t *BackColor)
+{
+  *TextColor = CurrentTextColor;
+  *BackColor = CurrentBackColor;
+}
+
+/**
+  * @brief  设置LCD的前景(字体)颜色,RGB565
+  * @param  Color: 指定前景(字体)颜色 
+  * @retval None
+  */
+void LCD_SetTextColor(uint16_t Color)
+{
+  CurrentTextColor = Color;
+}
+
+/**
+  * @brief  设置LCD的背景颜色,RGB565
+  * @param  Color: 指定背景颜色 
+  * @retval None
+  */
+void LCD_SetBackColor(uint16_t Color)
+{
+  CurrentBackColor = Color;
+}
+
+/**
+  * @brief  清除某行文字
+  * @param  Line: 指定要删除的行
+  *   本参数可使用宏LINE(0)、LINE(1)等方式指定要删除的行，
+  *   宏LINE(x)会根据当前选择的字体来计算Y坐标值，并删除当前字体高度的第x行。
+  * @retval None
+  */
+void ILI9806G_ClearLine(uint16_t Line)
+{
+  ILI9806G_Clear(0,Line,LCD_X_LENGTH,((sFONT *)LCD_GetFont())->Height);	/* 清屏，显示全黑 */
+
+}
+#endif
 /*********************end of file*************************/
 
 
