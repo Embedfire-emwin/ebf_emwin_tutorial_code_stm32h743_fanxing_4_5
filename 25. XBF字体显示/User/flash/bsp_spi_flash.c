@@ -75,7 +75,8 @@ void SPI_FLASH_Init(void)
    /*##-1- Configure the SPI peripheral #######################################*/
   /* Set the SPI parameters */
   SpiHandle.Instance               = SPIx;
-  SpiHandle.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  SpiHandle.Init.Mode = SPI_MODE_MASTER;
+  SpiHandle.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;//200Mhz/4=50Mhz -> 50MBit/s
   SpiHandle.Init.Direction         = SPI_DIRECTION_2LINES;
   SpiHandle.Init.CLKPhase          = SPI_PHASE_2EDGE;
   SpiHandle.Init.CLKPolarity       = SPI_POLARITY_HIGH;
@@ -85,7 +86,18 @@ void SPI_FLASH_Init(void)
   SpiHandle.Init.FirstBit          = SPI_FIRSTBIT_MSB;
   SpiHandle.Init.NSS               = SPI_NSS_SOFT;
   SpiHandle.Init.TIMode            = SPI_TIMODE_DISABLE;
-  
+	
+  SpiHandle.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  SpiHandle.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
+  SpiHandle.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
+  SpiHandle.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  SpiHandle.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  SpiHandle.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  SpiHandle.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+  SpiHandle.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
+  SpiHandle.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  SpiHandle.Init.IOSwap = SPI_IO_SWAP_DISABLE;
+	
   SpiHandle.Init.Mode = SPI_MODE_MASTER;
 
   HAL_SPI_Init(&SpiHandle); 

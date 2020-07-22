@@ -8,13 +8,22 @@
 /*-----------------------------------------------------------------------*/
 
 #include "diskio.h"			/* FatFs lower layer API */
-#include "./USBAPP/usbh_bsp.h"			/* 底层驱动 */
+#include "usb_host.h"
+#include "usbh_core.h"
+#include "usbh_msc.h"
 #include "ff.h"
 
+PARTITION VolToPart[]=
+{
+	{0,1},/* "0:" */
+	{0,2},/* "1:" */
+	{0,3}	/* "2:" */
+};
 
+extern USBH_HandleTypeDef hUsbHostFS;
 #define USB		    0
 #define SECTOR_SIZE		512
-
+static DWORD scratch[_MAX_SS / 4];
 
 /*-----------------------------------------------------------------------*/
 /* Inidialize a Drive                                                    */
@@ -24,14 +33,7 @@ DSTATUS disk_initialize (
 	BYTE pdrv				/* Physical drive nmuber (0..) */
 )
 {
-	DSTATUS stat = STA_NOINIT;
-
-	if(HCD_IsDeviceConnected(&USB_OTG_Core))
-	{
-		stat &= ~STA_NOINIT;
-	}
-			
-	return stat;
+  return RES_OK;
 }
 
 
@@ -44,12 +46,18 @@ DSTATUS disk_status (
 	BYTE pdrv		/* Physical drive nmuber (0..) */
 )
 {
-	DSTATUS stat = STA_NOINIT;
+  DRESULT res = RES_ERROR;
 
+  if(USBH_MSC_UnitIsReady(&hUsbHostFS, 0))
+  {
+    res = RES_OK;
+  }
+  else
+  {
+    res = RES_ERROR;
+  }
 
- stat = 0;
-
-	return stat;
+	return res;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -63,41 +71,54 @@ DRESULT disk_read (
 	UINT count		/* Number of sectors to read (1..128) */
 )
 {
-	DRESULT res;
+  DRESULT res = RES_ERROR;
+  MSC_LUNTypeDef info;
+  USBH_StatusTypeDef  status = USBH_OK;
 
+  if (((DWORD)buff & 3)) //字节对齐操作&& (((HCD_HandleTypeDef *)hUsbHostFS.pData)->Init.dma_enable))
+  {
+    while ((count--)&&(status == USBH_OK))
+    {
+      status = USBH_MSC_Read(&hUsbHostFS, 0, sector + count, (uint8_t *)scratch, 1);
 
-			//res = USB_disk_read(buff, sector, count);
-			{
-				BYTE status = USBH_MSC_OK;
+      if(status == USBH_OK)
+      {
+        memcpy (&buff[count * _MAX_SS] ,scratch, _MAX_SS);
+      }
+      else
+      {
+        break;
+      }
+    }
+  }
+  else
+  {
+    status = USBH_MSC_Read(&hUsbHostFS, 0, sector, buff, count);
+  }
 
-				//if (Stat & STA_NOINIT) 	return RES_NOTRDY;
+  if(status == USBH_OK)
+  {
+    res = RES_OK;
+  }
+  else
+  {
+    USBH_MSC_GetLUNInfo(&hUsbHostFS, 0, &info);
 
-				if (HCD_IsDeviceConnected(&USB_OTG_Core))
-				{
-					do
-					{
-						status = USBH_MSC_Read10(&USB_OTG_Core, (uint8_t *)buff,sector,SECTOR_SIZE * count);
-            USBH_MSC_HandleBOTXfer(&USB_OTG_Core ,&USB_Host);
+    switch (info.sense.asc)
+    {
+    case SCSI_ASC_LOGICAL_UNIT_NOT_READY:
+    case SCSI_ASC_MEDIUM_NOT_PRESENT:
+    case SCSI_ASC_NOT_READY_TO_READY_CHANGE:
+      USBH_ErrLog ("USB Disk is not ready!");
+      res = RES_NOTRDY;
+      break;
 
-						if (!HCD_IsDeviceConnected(&USB_OTG_Core))
-						{
-							break;
-						}
-					}
-					while (status == USBH_MSC_BUSY );
-				}
-
-				if (status == USBH_MSC_OK)
-				{
-					res = RES_OK;
-				}
-				else
-				{
-					res = RES_ERROR;
-				}
-			}
-
-	return res;
+    default:
+      res = RES_ERROR;
+      break;
+    }
+  }
+  return res;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -111,45 +132,58 @@ DRESULT disk_write (
 	UINT count			/* Number of sectors to write (1..128) */
 )
 {
-	DRESULT res;
+  DRESULT res = RES_ERROR;
+  MSC_LUNTypeDef info;
+  USBH_StatusTypeDef  status = USBH_OK;
 
+  if (((DWORD)buff & 3) && (((HCD_HandleTypeDef *)hUsbHostFS.pData)->Init.dma_enable))
+  {
 
-			//res = USB_disk_write(buff, sector, count);
-			{
-				BYTE status = USBH_MSC_OK;
+    while (count--)
+    {
+      memcpy (scratch, &buff[count * _MAX_SS], _MAX_SS);
 
-				//if (drv || !count) return RES_PARERR;
+      status = USBH_MSC_Write(&hUsbHostFS, 0, sector + count, (BYTE *)scratch, 1) ;
+      if(status == USBH_FAIL)
+      {
+        break;
+      }
+    }
+  }
+  else
+  {
+    status = USBH_MSC_Write(&hUsbHostFS, 0, sector, (BYTE *)buff, count);
+  }
 
-				//if (Stat & STA_NOINIT) return RES_NOTRDY;
-				//if (Stat & STA_PROTECT) return RES_WRPRT;
+  if(status == USBH_OK)
+  {
+    res = RES_OK;
+  }
+  else
+  {
+    USBH_MSC_GetLUNInfo(&hUsbHostFS, 0, &info);
 
-				if (HCD_IsDeviceConnected(&USB_OTG_Core))
-				{
-					do
-					{
-						status = USBH_MSC_Write10(&USB_OTG_Core,(BYTE*)buff,sector, SECTOR_SIZE * count);
-						USBH_MSC_HandleBOTXfer(&USB_OTG_Core, &USB_Host);
+    switch (info.sense.asc)
+    {
+    case SCSI_ASC_WRITE_PROTECTED:
+      USBH_ErrLog("USB Disk is Write protected!");
+      res = RES_WRPRT;
+      break;
 
-						if(!HCD_IsDeviceConnected(&USB_OTG_Core))
-						{
-							break;
-						}
-					}
-					while(status == USBH_MSC_BUSY );
+    case SCSI_ASC_LOGICAL_UNIT_NOT_READY:
+    case SCSI_ASC_MEDIUM_NOT_PRESENT:
+    case SCSI_ASC_NOT_READY_TO_READY_CHANGE:
+      USBH_ErrLog("USB Disk is not ready!");
+      res = RES_NOTRDY;
+      break;
 
-				}
+    default:
+      res = RES_ERROR;
+      break;
+    }
+  }
 
-				if (status == USBH_MSC_OK)
-				{
-					res = RES_OK;
-				}
-				else
-				{
-					res = RES_ERROR;
-				}
-			}
-
-	return res;
+  return res;
 }
 #endif
 
@@ -157,7 +191,7 @@ DRESULT disk_write (
 /*-----------------------------------------------------------------------*/
 /* Miscellaneous Functions                                               */
 /*-----------------------------------------------------------------------*/
-
+#define MSC_Handle ((MSC_HandleTypeDef *)(hUsbHostFS.pActiveClass->pData))
 #if _USE_IOCTL
 DRESULT disk_ioctl (
 	BYTE pdrv,		/* Physical drive nmuber (0..) */
@@ -166,7 +200,7 @@ DRESULT disk_ioctl (
 )
 {
 	DRESULT res;
-
+  MSC_LUNTypeDef info;
 
 			//if (drv) return RES_PARERR;
 			res = RES_ERROR;
@@ -179,18 +213,38 @@ DRESULT disk_ioctl (
 					break;
 
 				case GET_SECTOR_COUNT :	/* Get number of sectors on the disk (DWORD) */
-					*(DWORD*)buff = (DWORD) USBH_MSC_Param.MSCapacity;
-					res = RES_OK;
+					if(USBH_MSC_GetLUNInfo(&hUsbHostFS, 0, &info) == USBH_OK)
+					{
+						*(DWORD*)buff = info.capacity.block_nbr;
+						res = RES_OK;
+					}
+					else
+					{
+						res = RES_ERROR;
+					}
 					break;
-
 				case GET_SECTOR_SIZE :	/* Get R/W sector size (WORD) */
-					*(WORD*)buff = SECTOR_SIZE;
-					res = RES_OK;
+					if(USBH_MSC_GetLUNInfo(&hUsbHostFS, 0, &info) == USBH_OK)
+					{
+						*(DWORD*)buff = info.capacity.block_size;
+						res = RES_OK;
+					}
+					else
+					{
+						res = RES_ERROR;
+					}
 					break;
 
 				case GET_BLOCK_SIZE :	/* Get erase block size in unit of sector (DWORD) */\
-					*(DWORD*)buff = SECTOR_SIZE;
-					res = RES_OK;
+					if(USBH_MSC_GetLUNInfo(&hUsbHostFS, 0, &info) == USBH_OK)
+					{
+						*(DWORD*)buff = info.capacity.block_size;
+						res = RES_OK;
+					}
+					else
+					{
+						res = RES_ERROR;
+					}
 					break;
 
 				default:

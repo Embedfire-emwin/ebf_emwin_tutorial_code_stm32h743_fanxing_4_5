@@ -47,19 +47,24 @@ Purpose     : Display controller initialization
   */
 
 #include "GUI.h"
-#include "./sram/bsp_sram.h"
+
 /*********************************************************************
 *
-*       Defines, configurable
+*       Defines
 *
 **********************************************************************
 */
-/* 定义用于GUI的可用字节数 */
+//
+// Define the available number of bytes available for the GUI
+//
 #if USE_EXTMEMHEAP
-  #define GUI_NUMBYTES   (1024 * 1024)    // x Byte
+  #define GUI_NUMBYTES   (1024 * 1024 * 8)    // x Byte
+  #define GUI_EXTBUFADD  (0xD2000000-GUI_NUMBYTES)//32MB SDRAM的最后8MB作为STemWIN动态内存
 #else
-  #define GUI_NUMBYTES  (1024 * 60)    // x Byte
+  #define GUI_NUMBYTES  (1024 * 64)    // x KByte
 #endif
+
+#define GUI_BLOCKSIZE 0x80
 
 /*********************************************************************
 *
@@ -68,7 +73,7 @@ Purpose     : Display controller initialization
 **********************************************************************
 */
 #if USE_EXTMEMHEAP
-  static U32 HeapMem[GUI_NUMBYTES / 4] __attribute__((at(Bank1_SRAM4_ADDR)));
+  static U32 HeapMem[GUI_NUMBYTES / 4] __attribute__((at(GUI_EXTBUFADD)));
 #else
   static U32 extMem[GUI_NUMBYTES / 4];
 #endif
@@ -79,6 +84,21 @@ Purpose     : Display controller initialization
 *
 **********************************************************************
 */
+
+/*********************************************************************
+*
+*       Get_ExtMemHeap
+*
+* Purpose:
+*   Allocate heap from external memory
+*/
+#if USE_EXTMEMHEAP
+U32* Get_ExtMemHeap (void)
+{
+  return HeapMem;
+}
+#endif
+
 /*********************************************************************
 *
 *       GUI_X_Config
@@ -91,8 +111,10 @@ void GUI_X_Config(void)
 {
 #if USE_EXTMEMHEAP
   GUI_ALLOC_AssignMemory(HeapMem, GUI_NUMBYTES);
+	GUI_ALLOC_SetAvBlockSize(GUI_BLOCKSIZE);
 #else	
   GUI_ALLOC_AssignMemory(extMem, GUI_NUMBYTES);	
+	GUI_ALLOC_SetAvBlockSize(GUI_BLOCKSIZE);
 #endif
 }
 

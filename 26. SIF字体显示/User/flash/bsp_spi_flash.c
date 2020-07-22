@@ -3,12 +3,12 @@
   * @file    bsp_spi_flash.c
   * @author  fire
   * @version V1.0
-  * @date    2015-xx-xx
+  * @date    2020-xx-xx
   * @brief   spi flash 底层应用函数bsp 
   ******************************************************************************
   * @attention
   *
-  * 实验平台:野火STM32 F407 开发板
+  * 实验平台:野火STM32 F407 战擎开发板
   * 论坛    :http://www.firebbs.cn
   * 淘宝    :https://fire-stm32.taobao.com
   *
@@ -17,83 +17,101 @@
   
 #include "./flash/bsp_spi_flash.h"
 
+SPI_HandleTypeDef SpiHandle;
 
 static __IO uint32_t  SPITimeout = SPIT_LONG_TIMEOUT;   
 
 static uint16_t SPI_TIMEOUT_UserCallback(uint8_t errorCode);
 
- /**
-  * @brief  SPI_FLASH初始化
-  * @param  无
-  * @retval 无
+/**
+  * @brief SPI MSP Initialization 
+  *        This function configures the hardware resources used in this example: 
+  *           - Peripheral's clock enable
+  *           - Peripheral's GPIO Configuration  
+  * @param hspi: SPI handle pointer
+  * @retval None
   */
+void HAL_SPI_MspInit(SPI_HandleTypeDef *hspi)
+{
+  GPIO_InitTypeDef  GPIO_InitStruct;
+  
+  /*##-1- Enable peripherals and GPIO Clocks #################################*/
+  /* Enable GPIO TX/RX clock */
+  SPIx_SCK_GPIO_CLK_ENABLE();
+  SPIx_MISO_GPIO_CLK_ENABLE();
+  SPIx_MOSI_GPIO_CLK_ENABLE();
+  SPIx_CS_GPIO_CLK_ENABLE();
+  /* Enable SPI clock */
+  SPIx_CLK_ENABLE(); 
+  
+  /*##-2- Configure peripheral GPIO ##########################################*/  
+  /* SPI SCK GPIO pin configuration  */
+  GPIO_InitStruct.Pin       = SPIx_SCK_PIN;
+  GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull      = GPIO_PULLUP;
+  GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.Alternate = SPIx_SCK_AF;
+  
+  HAL_GPIO_Init(SPIx_SCK_GPIO_PORT, &GPIO_InitStruct);
+    
+  /* SPI MISO GPIO pin configuration  */
+  GPIO_InitStruct.Pin = SPIx_MISO_PIN;
+  GPIO_InitStruct.Alternate = SPIx_MISO_AF;
+  
+  HAL_GPIO_Init(SPIx_MISO_GPIO_PORT, &GPIO_InitStruct);
+  
+  /* SPI MOSI GPIO pin configuration  */
+  GPIO_InitStruct.Pin = SPIx_MOSI_PIN;
+  GPIO_InitStruct.Alternate = SPIx_MOSI_AF;  
+  HAL_GPIO_Init(SPIx_MOSI_GPIO_PORT, &GPIO_InitStruct);   
+
+  GPIO_InitStruct.Pin = FLASH_CS_PIN ;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  HAL_GPIO_Init(FLASH_CS_GPIO_PORT, &GPIO_InitStruct); 
+}
+
 void SPI_FLASH_Init(void)
 {
-  SPI_InitTypeDef  SPI_InitStructure;
-  GPIO_InitTypeDef GPIO_InitStructure;
+   /*##-1- Configure the SPI peripheral #######################################*/
+  /* Set the SPI parameters */
+  SpiHandle.Instance               = SPIx;
+  SpiHandle.Init.Mode = SPI_MODE_MASTER;
+  SpiHandle.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;//200Mhz/4=50Mhz -> 50MBit/s
+  SpiHandle.Init.Direction         = SPI_DIRECTION_2LINES;
+  SpiHandle.Init.CLKPhase          = SPI_PHASE_2EDGE;
+  SpiHandle.Init.CLKPolarity       = SPI_POLARITY_HIGH;
+  SpiHandle.Init.CRCCalculation    = SPI_CRCCALCULATION_DISABLE;
+  SpiHandle.Init.CRCPolynomial     = 7;
+  SpiHandle.Init.DataSize          = SPI_DATASIZE_8BIT;
+  SpiHandle.Init.FirstBit          = SPI_FIRSTBIT_MSB;
+  SpiHandle.Init.NSS               = SPI_NSS_SOFT;
+  SpiHandle.Init.TIMode            = SPI_TIMODE_DISABLE;
+	
+  SpiHandle.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  SpiHandle.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
+  SpiHandle.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
+  SpiHandle.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  SpiHandle.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  SpiHandle.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  SpiHandle.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+  SpiHandle.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
+  SpiHandle.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  SpiHandle.Init.IOSwap = SPI_IO_SWAP_DISABLE;
+	
+  SpiHandle.Init.Mode = SPI_MODE_MASTER;
+
+  HAL_SPI_Init(&SpiHandle); 
   
-  /* 使能 FLASH_SPI 及GPIO 时钟 */
-  /*!< SPI_FLASH_SPI_CS_GPIO, SPI_FLASH_SPI_MOSI_GPIO, 
-       SPI_FLASH_SPI_MISO_GPIO,SPI_FLASH_SPI_SCK_GPIO 时钟使能 */
-  RCC_AHB1PeriphClockCmd (FLASH_SPI_SCK_GPIO_CLK | FLASH_SPI_MISO_GPIO_CLK|FLASH_SPI_MOSI_GPIO_CLK|FLASH_CS_GPIO_CLK, ENABLE);
-
-  /*!< SPI_FLASH_SPI 时钟使能 */
-  FLASH_SPI_CLK_INIT(FLASH_SPI_CLK, ENABLE);
- 
-  //设置引脚复用
-  GPIO_PinAFConfig(FLASH_SPI_SCK_GPIO_PORT,FLASH_SPI_SCK_PINSOURCE,FLASH_SPI_SCK_AF); 
-	GPIO_PinAFConfig(FLASH_SPI_MISO_GPIO_PORT,FLASH_SPI_MISO_PINSOURCE,FLASH_SPI_MISO_AF); 
-	GPIO_PinAFConfig(FLASH_SPI_MOSI_GPIO_PORT,FLASH_SPI_MOSI_PINSOURCE,FLASH_SPI_MOSI_AF); 
-  
-  /*!< 配置 SPI_FLASH_SPI 引脚: SCK */
-  GPIO_InitStructure.GPIO_Pin = FLASH_SPI_SCK_PIN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
-  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;  
-  
-  GPIO_Init(FLASH_SPI_SCK_GPIO_PORT, &GPIO_InitStructure);
-  
-	/*!< 配置 SPI_FLASH_SPI 引脚: MISO */
-  GPIO_InitStructure.GPIO_Pin = FLASH_SPI_MISO_PIN;
-  GPIO_Init(FLASH_SPI_MISO_GPIO_PORT, &GPIO_InitStructure);
-  
-	/*!< 配置 SPI_FLASH_SPI 引脚: MOSI */
-  GPIO_InitStructure.GPIO_Pin = FLASH_SPI_MOSI_PIN;
-  GPIO_Init(FLASH_SPI_MOSI_GPIO_PORT, &GPIO_InitStructure);  
-
-	/*!< 配置 SPI_FLASH_SPI 引脚: CS */
-  GPIO_InitStructure.GPIO_Pin = FLASH_CS_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-  GPIO_Init(FLASH_CS_GPIO_PORT, &GPIO_InitStructure);
-
-  /* 停止信号 FLASH: CS引脚高电平*/
-  SPI_FLASH_CS_HIGH();
-
-  /* FLASH_SPI 模式配置 */
-  // FLASH芯片 支持SPI模式0及模式3，据此设置CPOL CPHA
-  SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
-  SPI_InitStructure.SPI_Mode = SPI_Mode_Master;
-  SPI_InitStructure.SPI_DataSize = SPI_DataSize_8b;
-  SPI_InitStructure.SPI_CPOL = SPI_CPOL_High;
-  SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;
-  SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;
-  SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_2;
-  SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;
-  SPI_InitStructure.SPI_CRCPolynomial = 7;
-  SPI_Init(FLASH_SPI, &SPI_InitStructure);
-
-  /* 使能 FLASH_SPI  */
-  SPI_Cmd(FLASH_SPI, ENABLE);
-
+  __HAL_SPI_ENABLE(&SpiHandle);     
 }
+
 
  /**
   * @brief  擦除FLASH扇区
   * @param  SectorAddr：要擦除的扇区地址
   * @retval 无
   */
-void SPI_FLASH_SectorErase(u32 SectorAddr)
+void SPI_FLASH_SectorErase(uint32_t SectorAddr)
 {
   /* 发送FLASH写使能命令 */
   SPI_FLASH_WriteEnable();
@@ -138,8 +156,6 @@ void SPI_FLASH_BulkErase(void)
   SPI_FLASH_WaitForWriteEnd();
 }
 
-
-
  /**
   * @brief  对FLASH按页写入数据，调用本函数写入数据前需要先擦除扇区
   * @param	pBuffer，要写入数据的指针
@@ -147,7 +163,7 @@ void SPI_FLASH_BulkErase(void)
   * @param  NumByteToWrite，写入数据长度，必须小于等于SPI_FLASH_PerWritePageSize
   * @retval 无
   */
-void SPI_FLASH_PageWrite(u8* pBuffer, u32 WriteAddr, u16 NumByteToWrite)
+void SPI_FLASH_PageWrite(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite)
 {
   /* 发送FLASH写使能命令 */
   SPI_FLASH_WriteEnable();
@@ -193,9 +209,9 @@ void SPI_FLASH_PageWrite(u8* pBuffer, u32 WriteAddr, u16 NumByteToWrite)
   * @param  NumByteToWrite，写入数据长度
   * @retval 无
   */
-void SPI_FLASH_BufferWrite(u8* pBuffer, u32 WriteAddr, u16 NumByteToWrite)
+void SPI_FLASH_BufferWrite(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite)
 {
-  u8 NumOfPage = 0, NumOfSingle = 0, Addr = 0, count = 0, temp = 0;
+  uint8_t NumOfPage = 0, NumOfSingle = 0, Addr = 0, count = 0, temp = 0;
 	
 	/*mod运算求余，若writeAddr是SPI_FLASH_PageSize整数倍，运算结果Addr值为0*/
   Addr = WriteAddr % SPI_FLASH_PageSize;
@@ -287,7 +303,7 @@ void SPI_FLASH_BufferWrite(u8* pBuffer, u32 WriteAddr, u16 NumByteToWrite)
   * @param   NumByteToRead，读取数据长度
   * @retval 无
   */
-void SPI_FLASH_BufferRead(u8* pBuffer, u32 ReadAddr, u16 NumByteToRead)
+void SPI_FLASH_BufferRead(uint8_t* pBuffer, uint32_t ReadAddr, uint16_t NumByteToRead)
 {
   /* 选择FLASH: CS低电平 */
   SPI_FLASH_CS_LOW();
@@ -321,9 +337,9 @@ void SPI_FLASH_BufferRead(u8* pBuffer, u32 ReadAddr, u16 NumByteToRead)
   * @param 	无
   * @retval FLASH ID
   */
-u32 SPI_FLASH_ReadID(void)
+uint32_t SPI_FLASH_ReadID(void)
 {
-  u32 Temp = 0, Temp0 = 0, Temp1 = 0, Temp2 = 0;
+  uint32_t Temp = 0, Temp0 = 0, Temp1 = 0, Temp2 = 0;
 
   /* 开始通讯：CS低电平 */
   SPI_FLASH_CS_LOW();
@@ -354,9 +370,9 @@ u32 SPI_FLASH_ReadID(void)
   * @param 	无
   * @retval FLASH Device ID
   */
-u32 SPI_FLASH_ReadDeviceID(void)
+uint32_t SPI_FLASH_ReadDeviceID(void)
 {
-  u32 Temp = 0;
+  uint32_t Temp = 0;
 
   /* Select the FLASH: Chip Select low */
   SPI_FLASH_CS_LOW();
@@ -387,7 +403,7 @@ u32 SPI_FLASH_ReadDeviceID(void)
 * Output         : None
 * Return         : None
 *******************************************************************************/
-void SPI_FLASH_StartReadSequence(u32 ReadAddr)
+void SPI_FLASH_StartReadSequence(uint32_t ReadAddr)
 {
   /* Select the FLASH: Chip Select low */
   SPI_FLASH_CS_LOW();
@@ -410,9 +426,13 @@ void SPI_FLASH_StartReadSequence(u32 ReadAddr)
   * @param  无
   * @retval 返回接收到的数据
   */
-u8 SPI_FLASH_ReadByte(void)
+uint8_t SPI_FLASH_ReadByte(void)
 {
-  return (SPI_FLASH_SendByte(Dummy_Byte));
+  uint8_t r_byre = 0;
+  
+  HAL_SPI_Receive(&SpiHandle, &r_byre, 1, 1000);
+  
+  return r_byre;
 }
 
 
@@ -421,29 +441,13 @@ u8 SPI_FLASH_ReadByte(void)
   * @param  byte：要发送的数据
   * @retval 返回接收到的数据
   */
-u8 SPI_FLASH_SendByte(u8 byte)
+uint8_t SPI_FLASH_SendByte(uint8_t byte)
 {
-  SPITimeout = SPIT_FLAG_TIMEOUT;
+  uint8_t r_byre = 0;
+  
+  HAL_SPI_TransmitReceive(&SpiHandle, &byte, &r_byre, 1, 1000);
 
-  /* 等待发送缓冲区为空，TXE事件 */
-  while (SPI_I2S_GetFlagStatus(FLASH_SPI, SPI_I2S_FLAG_TXE) == RESET)
-   {
-    if((SPITimeout--) == 0) return SPI_TIMEOUT_UserCallback(0);
-   }
-
-  /* 写入数据寄存器，把要写入的数据写入发送缓冲区 */
-  SPI_I2S_SendData(FLASH_SPI, byte);
-
-  SPITimeout = SPIT_FLAG_TIMEOUT;
-
-  /* 等待接收缓冲区非空，RXNE事件 */
-  while (SPI_I2S_GetFlagStatus(FLASH_SPI, SPI_I2S_FLAG_RXNE) == RESET)
-   {
-    if((SPITimeout--) == 0) return SPI_TIMEOUT_UserCallback(1);
-   }
-
-  /* 读取数据寄存器，获取接收缓冲区数据 */
-  return SPI_I2S_ReceiveData(FLASH_SPI);
+  return r_byre;
 }
 
 /*******************************************************************************
@@ -454,29 +458,13 @@ u8 SPI_FLASH_SendByte(u8 byte)
 * Output         : None
 * Return         : The value of the received Half Word.
 *******************************************************************************/
-u16 SPI_FLASH_SendHalfWord(u16 HalfWord)
+uint16_t SPI_FLASH_SendHalfWord(uint16_t HalfWord)
 {
+  uint16_t r_hbyre = 0;
   
-  SPITimeout = SPIT_FLAG_TIMEOUT;
+  HAL_SPI_TransmitReceive(&SpiHandle, (uint8_t *)&HalfWord, (uint8_t *)&r_hbyre, 2, 1000);
 
-  /* Loop while DR register in not emplty */
-  while (SPI_I2S_GetFlagStatus(FLASH_SPI, SPI_I2S_FLAG_TXE) == RESET)
-  {
-    if((SPITimeout--) == 0) return SPI_TIMEOUT_UserCallback(2);
-   }
-
-  /* Send Half Word through the FLASH_SPI peripheral */
-  SPI_I2S_SendData(FLASH_SPI, HalfWord);
-
-  SPITimeout = SPIT_FLAG_TIMEOUT;
-
-  /* Wait to receive a Half Word */
-  while (SPI_I2S_GetFlagStatus(FLASH_SPI, SPI_I2S_FLAG_RXNE) == RESET)
-   {
-    if((SPITimeout--) == 0) return SPI_TIMEOUT_UserCallback(3);
-   }
-  /* Return the Half Word read from the SPI bus */
-  return SPI_I2S_ReceiveData(FLASH_SPI);
+  return r_hbyre;
 }
 
 
@@ -504,7 +492,7 @@ void SPI_FLASH_WriteEnable(void)
   */
 void SPI_FLASH_WaitForWriteEnd(void)
 {
-  u8 FLASH_Status = 0;
+  uint8_t FLASH_Status = 0;
 
   /* 选择 FLASH: CS 低 */
   SPI_FLASH_CS_LOW();
@@ -517,15 +505,13 @@ void SPI_FLASH_WaitForWriteEnd(void)
   do
   {
     /* 读取FLASH芯片的状态寄存器 */
-    FLASH_Status = SPI_FLASH_SendByte(Dummy_Byte);	 
-
-    {
-      if((SPITimeout--) == 0) 
-      {
-        SPI_TIMEOUT_UserCallback(4);
-        return;
-      }
-    } 
+    FLASH_Status = SPI_FLASH_SendByte(Dummy_Byte);	
+//    HAL_Delay(1);    
+//    if((SPITimeout--) == 0) 
+//    {
+//      SPI_TIMEOUT_UserCallback(4);
+//      return;
+//    }
   }
   while ((FLASH_Status & WIP_Flag) == SET); /* 正在写入标志 */
 
