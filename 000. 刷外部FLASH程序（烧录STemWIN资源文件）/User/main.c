@@ -60,6 +60,7 @@ int main(void)
 	Key_GPIO_Config();
 	SPI_FLASH_Init();
 
+	printf("<正在使用刷外部FLASH程序,请将对应资源文件放入U盘中,并将U盘插入开发!>\r\n");
   while (1)
   {
     /* USER CODE END WHILE */
